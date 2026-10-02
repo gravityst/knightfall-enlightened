@@ -29,6 +29,7 @@ func start() -> void:
 		_queue.append(p)
 	_http = HTTPRequest.new()
 	_http.download_chunk_size = 1 << 20
+	_http.accept_gzip = false       # the browser already unzips what GitHub Pages compresses
 	_http.request_completed.connect(_on_done)
 	add_child(_http)
 	_next()
