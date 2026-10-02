@@ -26,6 +26,7 @@ func _init() -> void:
 		if not placed:
 			packs.append([[f], _len(f)])
 	var spec := []
+	var sums := ""
 	for i in packs.size():
 		var name := "data%d.pck" % (i + 1)
 		var pk := PCKPacker.new()
@@ -35,9 +36,11 @@ func _init() -> void:
 		pk.flush()
 		var size := FileAccess.open(out.path_join(name), FileAccess.READ).get_length()
 		spec.append({"file": name, "size": size})
+		sums += FileAccess.get_md5(out.path_join(name))
 		print("PACK %s %.1f MB (%d files)" % [name, size / 1048576.0, packs[i][0].size()])
 	var src := FileAccess.get_file_as_string("res://scripts/core/web_build.gd")
-	var build := str(int(Time.get_unix_time_from_system()))
+	# named by content: players keep their cached packs until the island's data really changes
+	var build := sums.md5_text().substr(0, 12)
 	var lines := []
 	for l in src.split("\n"):
 		if l.begins_with("const BUILD"):
