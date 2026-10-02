@@ -1,0 +1,9 @@
+# Godot
+.godot/
+*.translation
+/android/
+
+# macOS and tooling
+.DS_Store
+*.mov
+__pycache__/
