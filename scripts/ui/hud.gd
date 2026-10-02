@@ -38,6 +38,8 @@ var _hidden := false
 var _wander := 0.0               # distance walked since anything was last found (for the "lost?" hint)
 var _wander_from := Vector3.INF
 var _lost_hint := false
+var _click_label: Label         # browsers: the mouse can only be captured from a click
+var _had_lock := false
 var menus: Node
 
 
@@ -365,6 +367,15 @@ func _ready() -> void:
 	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UITheme.place(death_label, Control.PRESET_CENTER, Vector2(-500, -60), Vector2(1000, 120))
 	root.add_child(death_label)
+	if OS.has_feature("web"):
+		_click_label = UITheme.label("Click to play", 36, Color(1.0, 0.88, 0.6), "header")
+		_click_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_click_label.add_theme_constant_override("outline_size", 10)
+		_click_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		UITheme.place(_click_label, Control.PRESET_CENTER, Vector2(-400, -110), Vector2(800, 50))
+		_click_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_click_label.visible = false
+		root.add_child(_click_label)
 	Game.notify.connect(_on_notify)
 	if Game.player_ref:
 		(Game.player_ref as Player).interaction_changed.connect(set_prompt)
@@ -431,6 +442,8 @@ func _process(delta: float) -> void:
 	_sub_t -= delta
 	if _sub_t <= 0.0:
 		subtitle.text = ""
+	if _click_label:
+		_web_mouse(p)
 	fps.visible = bool(Game.settings.show_fps)
 	if fps.visible:
 		fps.text = "%d FPS" % Engine.get_frames_per_second()
@@ -445,6 +458,25 @@ func _process(delta: float) -> void:
 		for q in QUESTS.active().slice(0, 3):
 			lines.append("◆ " + QUESTS.objective(q))
 		tracker.text = "\n".join(lines)
+
+
+## Browsers capture the mouse only from a click, and take Esc for themselves (releasing the
+## mouse before the game sees the key): ask for a click, and pause when the mouse is let go.
+func _web_mouse(p: Player) -> void:
+	var playing: bool = Game.world_ref and Game.world_ref.ready_to_play and not Game.in_menu and not p.dead
+	var locked := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if playing and locked:
+		_had_lock = true
+	elif playing and _had_lock:
+		_had_lock = false
+		menus.open_pause()
+	_click_label.visible = playing and not locked
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _click_label and _click_label.visible and event is InputEventMouseButton and event.pressed:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
 
 
 func _on_location(n: String) -> void:
