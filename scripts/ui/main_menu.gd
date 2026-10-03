@@ -16,7 +16,8 @@ Black bear, elk, moose antlers, mallard, goose, crow, hen, hawk, gull -
 [i]Poly by Google[/i] via poly.pizza (CC-BY 3.0)
 
 [b]Sound[/b]
-Footsteps, hooves, blades, shields, doors, coins, cloth, books and interface sounds - [i]Kenney[/i] (CC0)
+Footsteps, hooves, blades, armour, shields, doors, coins, glass, cloth, books and interface sounds - [i]Kenney[/i] (CC0)
+Voices, animal calls, birdsong, weather and ambience - modelled in code for Knightfall
 
 [b]Fonts[/b] (SIL Open Font Licence)
 UnifrakturCook, Cinzel, EB Garamond, IM Fell English SC
@@ -205,7 +206,7 @@ func _build_stage() -> void:
 	rng.seed = 19
 	# a ring of pines and broadleaves, thicker behind the fire than behind the camera
 	var trees := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5", "CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "Pine_2", "Pine_4", "DeadTree_2"]
-	for i in 70:
+	for i in (36 if Assets.compat else 70):
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(9.0, 48.0)
 		var p := Vector3(sin(a) * r, 0, cos(a) * r)
@@ -297,7 +298,7 @@ func _scatter_grass(rng: RandomNumberGenerator) -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = mesh
-		var n := 900 if nm.begins_with("Grass") else 160
+		var n := (400 if Assets.compat else 900) if nm.begins_with("Grass") else 160
 		mm.instance_count = n
 		var s0 := (0.5 if nm.begins_with("Grass") else 0.3) / maxf(bb.size.y, 0.01)
 		for i in n:

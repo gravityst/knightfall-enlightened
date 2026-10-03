@@ -3,6 +3,9 @@ class_name FireFX
 
 static var _flame_mat: StandardMaterial3D
 static var _smoke_mat: StandardMaterial3D
+## Fires and smoke further than this from the player stop emitting and aren't processed or drawn:
+## a town has hundreds, and on the browser's renderer each one costs a pass every frame.
+static var lod_range: float = 45.0 if Assets.compat else 150.0
 
 
 static func flames(radius: float, height: float) -> Node3D:
@@ -63,9 +66,56 @@ static func flames(radius: float, height: float) -> Node3D:
 	p.draw_pass_1 = q
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.visibility_aabb = AABB(Vector3(-2, -1, -2), Vector3(4, 5, 4))
-	root.add_child(p)
-	root.add_child(smoke(radius * 0.8, 2.4))
+	root.add_child(_for_renderer(p))
+	root.add_child(_for_renderer(smoke(radius * 0.8, 2.4)))
+	root.add_child(Lod.new())
 	return root
+
+
+## On the Compatibility renderer GPU particles run a transform-feedback pass each; CPU
+## particles (simulated in C++, drawn as one multimesh) are far cheaper there.
+static func _for_renderer(p: GPUParticles3D) -> GeometryInstance3D:
+	if not Assets.compat or Game.debug_flag("gpufx"):
+		return p
+	var c := CPUParticles3D.new()
+	c.convert_from_particles(p)
+	c.mesh = p.draw_pass_1
+	c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	c.local_coords = p.local_coords
+	p.free()
+	return c
+
+
+## Switches its parent's fire and smoke off while the player is far away.
+class Lod extends Node:
+	var _t := 0.0
+	var _on := true
+
+	func _ready() -> void:
+		_t = randf() * 0.4          # spread the checks over frames
+		_apply(false)
+
+	func _process(delta: float) -> void:
+		_t -= delta
+		if _t > 0.0:
+			return
+		_t = 0.5
+		var me := get_parent() as Node3D
+		var pl: Node3D = Game.player_ref
+		if me == null or not me.is_inside_tree():
+			return
+		var near := pl == null or me.global_position.distance_squared_to(pl.global_position) < FireFX.lod_range * FireFX.lod_range
+		if near != _on:
+			_apply(near)
+
+	func _apply(on: bool) -> void:
+		_on = on
+		if on:
+			Game.mark("fires lit")
+		for c in get_parent().get_children():
+			if c is GPUParticles3D or c is CPUParticles3D:
+				c.set("emitting", on)
+				(c as GeometryInstance3D).visible = on
 
 
 static func smoke(radius: float, rise: float) -> GPUParticles3D:

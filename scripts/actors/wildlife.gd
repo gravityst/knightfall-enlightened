@@ -198,6 +198,9 @@ func _try_spawn_flock(p: Vector3) -> void:
 func _spawn_group(sp_name: String, at: Vector3) -> Dictionary:
 	var spec: Dictionary = SPECIES[sp_name]
 	var n := randi_range(int(spec.group[0]), int(spec.group[1]))
+	if Assets.compat:
+		n = mini(n, 4)          # the browser: smaller herds
+	Game.mark("%d %s spawn" % [n, sp_name])
 	var g := {"species": sp_name, "kind": spec.kind, "center": at, "members": [], "flee_t": 0.0}
 	for i in n:
 		var a: Animal = Animal.new()

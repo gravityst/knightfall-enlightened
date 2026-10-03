@@ -145,6 +145,7 @@ static func _manifest_lines() -> PackedStringArray:
 
 static func scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
+		Game.mark("load " + path.get_file())
 		var res: PackedScene = null
 		if _pending.has(path):
 			_pending.erase(path)

@@ -865,7 +865,7 @@ func take_damage(amount: float, source: Node, fall := false, _knock := 0.0) -> v
 				blocked = true
 				dmg *= 1.0 - Game.shield_block()
 				Game.change_stat("stamina", -amount * 0.6)
-				Audio.play_at("block", global_position)
+				Audio.play_at("block_metal" if Game.equipped.shield == "kite_shield" else "block", global_position)
 				FireFX.burst(get_tree().current_scene, shield_at, "sparks", to_src)
 				if float(Game.stats.stamina) <= 0.5:
 					_guard_break = 1.4
@@ -882,6 +882,8 @@ func take_damage(amount: float, source: Node, fall := false, _knock := 0.0) -> v
 			if dmg > 6.0 and mounted == null and push.length() > 0.01:
 				_kick(push.normalized() * minf(dmg * 0.16, 4.5), 0.16)     # heavy blows shove you back
 	Game.change_stat("health", -dmg)
+	if dmg >= 2.0:
+		Audio.play_at("grunt_m", global_position + Vector3.UP * 1.5, -3.0 + minf(dmg * 0.15, 4.0), randf_range(0.95, 1.05))
 	_hurt_flash = 1.0
 	_shake = minf(_shake + 0.25 + dmg * 0.035, 1.0)
 	if Game.world_ref:

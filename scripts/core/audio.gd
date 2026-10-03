@@ -1,10 +1,17 @@
 extends Node
-## Audio: recorded CC0 foley (Kenney: footsteps, blades, shields, doors, coins, interface) where
-## available; everything else - animals, voices, weather and ambience beds, and the lute
-## "minstrel" music - is synthesised at load (cached to user:// after the first run).
+## Audio: recorded CC0 foley (Kenney: footsteps, blades, armour, shields, doors, coins, glass,
+## interface) where available, layered for combat; everything else - animals, voices, weather and
+## ambience beds - is modelled in audio_synth.gd (formant voices, granular rain and water, crackling
+## fire, birdsong) and the lute "minstrel" music is played live. Synthesised sounds are cached to
+## user:// after the first run; the browser build ships them pre-rendered in res://sounds/gen/.
 
 const RATE := 22050
-const CACHE := "user://sfx_cache_v2/"
+const CACHE := "user://sfx_cache_v3/"
+const PRERENDERED := "res://sounds/gen/"
+const SYNTH := preload("res://scripts/core/audio_synth.gd")
+## combat sounds built from several recordings: sound -> [[layer, dB], ...]
+const LAYERS := {"hit_flesh": [["slash", -5.0]], "hit_heavy": [["chop", -3.0], ["slash", -8.0]], "hit_metal": [["ring", -9.0]],
+	"parry": [["block_metal", -4.0]]}
 const SOUNDS := "res://sounds/"
 ## sound name -> recorded variations in res://sounds (loaded directly; the folder is not imported)
 const RECORDED := {
@@ -14,7 +21,12 @@ const RECORDED := {
 	"step_snow": ["footstep_snow_000", "footstep_snow_001", "footstep_snow_002", "footstep_snow_003", "footstep_snow_004"],
 	"step_sand": ["footstep_carpet_000", "footstep_carpet_001", "footstep_carpet_002", "footstep_carpet_003", "footstep_carpet_004"],
 	"hit_flesh": ["impactPunch_medium_000", "impactPunch_medium_001", "impactPunch_medium_002", "impactPunch_medium_003", "impactPunch_medium_004"],
-	"hit_metal": ["impactMetal_heavy_000", "impactMetal_heavy_001", "impactMetal_heavy_002", "impactMetal_heavy_003", "impactMetal_heavy_004"],
+	"hit_metal": ["impactPlate_heavy_000", "impactPlate_heavy_001", "impactPlate_heavy_002", "impactPlate_heavy_003", "impactPlate_heavy_004"],
+	"ring": ["impactMetal_light_000", "impactMetal_light_001", "impactMetal_light_002"],
+	"slash": ["knifeSlice", "knifeSlice2"],
+	"chop": ["chop"],
+	"clink": ["impactGlass_light_000", "impactGlass_light_001", "impactGlass_light_002", "impactGlass_light_003", "impactGlass_light_004"],
+	"block_metal": ["impactMetal_medium_000", "impactMetal_medium_001", "impactMetal_medium_002", "impactMetal_medium_003", "impactMetal_medium_004"],
 	"block": ["impactWood_heavy_000", "impactWood_heavy_001", "impactWood_heavy_002", "impactWood_heavy_003", "impactWood_heavy_004"],
 	"door_open": ["doorOpen_1", "doorOpen_2"],
 	"door_close": ["doorClose_1", "doorClose_2", "doorClose_3", "doorClose_4"],
@@ -55,6 +67,7 @@ var _amb := {}             # name -> AudioStreamPlayer
 var _music: AudioStreamPlayer
 var _music_pb: AudioStreamGeneratorPlayback
 var _ready_flag := false
+var _clink_t := 2.0
 var _rng := RandomNumberGenerator.new()
 # minstrel state
 var _voices: Array = []
@@ -83,6 +96,27 @@ func _ready() -> void:
 		_pool.append(p)
 	_ui = AudioStreamPlayer.new()
 	add_child(_ui)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--render-sounds="):
+			_render_all(a.substr(16))
+
+
+## Writes every synthesised sound (not the recorded ones) as WAV files, for the browser build to
+## ship instead of making them on the player's machine.
+func _render_all(dir: String) -> void:
+	DirAccess.make_dir_recursive_absolute(dir)
+	var defs := _defs()
+	var n := 0
+	for name in defs:
+		if RECORDED.has(name):
+			continue
+		for v in int(defs[name][1]):
+			_rng.seed = hash(name) + v * 7919
+			var data: PackedFloat32Array = (defs[name][0] as Callable).call(v)
+			_to_wav(data, bool(defs[name][2])).save_to_wav(dir.path_join("%s_%d.wav" % [name, v]))
+			n += 1
+	print("RENDERED %d sounds" % n)
+	get_tree().quit()
 
 
 # ------------------------------------------------------------------ public API
@@ -102,7 +136,15 @@ func generate_all() -> void:
 			continue
 		for v in int(defs[name][1]):
 			var path := CACHE + "%s_%d.wav" % [name, v]
+			var pre := PRERENDERED + "%s_%d.wav" % [name, v]
 			var st: AudioStreamWAV = null
+			if FileAccess.file_exists(pre):
+				st = AudioStreamWAV.load_from_file(pre)
+				if st and bool(defs[name][2]):
+					st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+					st.loop_end = st.data.size() / 2
+				arr.append(st)
+				continue
 			if FileAccess.file_exists(path):
 				st = AudioStreamWAV.load_from_file(path)
 			if st == null:
@@ -129,6 +171,14 @@ func footstep(pos: Vector3, surface: String, sprint: bool) -> void:
 
 
 func play_at(name: String, pos: Vector3, vol := 0.0, pitch := 1.0) -> void:
+	if not sfx.has(name):
+		return
+	for l in LAYERS.get(name, []):
+		_play_one(String(l[0]), pos, vol + float(l[1]), pitch)
+	_play_one(name, pos, vol, pitch)
+
+
+func _play_one(name: String, pos: Vector3, vol: float, pitch: float) -> void:
 	if not sfx.has(name):
 		return
 	var arr: Array = sfx[name]
@@ -195,6 +245,11 @@ func _process(delta: float) -> void:
 			water = true
 	var ocean := WorldData.water_level_at(p.x, p.z) < 0.5 and b in [WorldData.Biome.BEACH, WorldData.Biome.OCEAN]
 	var in_tavern := pl.indoors and _near_tavern(p)
+	if in_tavern:
+		_clink_t -= delta
+		if _clink_t <= 0.0:        # mugs set down and knocked together around the room
+			_clink_t = randf_range(1.5, 5.0)
+			play_at("clink", p + Vector3(randf_range(-6, 6), 1.0, randf_range(-6, 6)), -9.0, randf_range(0.9, 1.1))
 	var fire: bool = Game.world_ref.call("fire_near", p, 9.0)
 	var wind := float(atm.params.wind)
 	var amb_vol := float(Game.settings.sfx_volume) * (0.25 if pl.indoors else 1.0)
@@ -444,12 +499,13 @@ func _loop_fade(x: PackedFloat32Array, secs: float) -> void:
 
 
 const SOUND_SPECS := {
-	"step_grass": 4, "step_stone": 4, "step_wood": 4, "step_snow": 4, "step_sand": 3, "step_water": 3, "swing": 3, "hit_flesh": 3, "hit_metal": 3,
+	"step_grass": 4, "step_stone": 4, "step_wood": 4, "step_snow": 4, "step_sand": 3, "step_water": 3, "swing": 4, "hit_flesh": 3, "hit_metal": 3,
 	"block": 2, "door_open": 2, "door_close": 2, "chest": 1, "coin": 2, "drink": 1, "unsheathe": 1, "sheathe": 1, "whistle": 1, "hoof": 3,
-	"growl": 2, "howl": 2, "bite": 2, "quack": 2, "honk": 2, "cow": 1, "sheep": 1, "pig": 1, "hen": 1, "dog": 1, "donkey": 1, "alpaca": 1,
+	"growl": 3, "howl": 3, "bite": 2, "quack": 3, "honk": 2, "cow": 2, "sheep": 3, "pig": 2, "hen": 2, "dog": 2, "donkey": 1, "alpaca": 2,
 	"skin": 1, "portcullis": 1, "thunder": 3, "ui_click": 1, "ui_hover": 1, "ui_open": 1, "ui_close": 1, "ui_coin": 1, "voice_m": 4, "voice_f": 4,
 	"amb_wind": 1, "amb_rain": 1, "amb_forest": 1, "amb_night": 1, "amb_river": 1, "amb_fire": 1, "amb_tavern": 1, "amb_ocean": 1,
-	"neigh": 2, "snort": 2, "hoof_hard": 1, "hoof_soft": 1, "whoosh": 1, "parry": 1, "hit_heavy": 1, "item_pick": 1, "item_drop": 1, "equip": 1,
+	"neigh": 3, "snort": 2, "grunt_m": 4, "grunt_f": 4, "death_m": 2, "death_f": 2, "roar": 2, "caw": 2, "gull_cry": 1, "screech": 1, "eat": 1,
+	"ring": 1, "slash": 1, "chop": 1, "clink": 1, "block_metal": 1, "hoof_hard": 1, "hoof_soft": 1, "whoosh": 1, "parry": 1, "hit_heavy": 1, "item_pick": 1, "item_drop": 1, "equip": 1,
 	"ui_book_open": 1, "ui_book_close": 1, "ui_page": 1,
 }
 
@@ -462,6 +518,9 @@ func _defs() -> Dictionary:
 
 
 func _gen(v: int, n: String) -> PackedFloat32Array:
+	var made: PackedFloat32Array = SYNTH.new(_rng).make(n, v)
+	if not made.is_empty():
+		return made
 	var x: PackedFloat32Array
 	match n:
 		"step_grass":

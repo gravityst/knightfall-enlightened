@@ -32,6 +32,7 @@ var _dead_t := 0.0
 var _stuck_t := 0.0
 var _shadow_t := 0.0
 var _anim_lod := 0.0
+var _anim_far := false
 # melee
 var _stagger := 0.0             # reeling from a blow or a parry: no attacks
 var _swing := 0                 # id of the blow being wound up (a stagger cancels it)
@@ -64,6 +65,14 @@ func setup(d: NPCManager.NPCData, m: NPCManager) -> void:
 	_yaw = d.yaw
 	model.rotation.y = _yaw
 	_think = randf() * 0.5
+
+
+func _process(delta: float) -> void:
+	if _anim_far and model and model.anim:
+		_anim_lod += delta
+		if _anim_lod >= 0.125:
+			model.anim.advance(_anim_lod)
+			_anim_lod = 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -103,6 +112,12 @@ func _lod(delta: float) -> void:
 	if p == null:
 		return
 	var d := p.global_position.distance_to(global_position)
+	if Assets.compat:
+		# the browser: no character shadows, and distant townsfolk animate ten times a second
+		model.set_shadows(false)
+		_anim_far = d > 12.0
+		model.anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if _anim_far else AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+		return
 	model.set_shadows(d < 45.0)
 	model.anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
 
@@ -394,6 +409,8 @@ func take_damage(amount: float, source: Node, _fall := false, knock := 0.0) -> b
 	var away := -to.normalized() if to.length() > 0.01 else Vector3.ZERO
 	# a blow interrupts a swing that's still winding up (a heavy one always does)
 	var interrupt := knock >= 3.0 or _swinging <= 0.0 or (_swinging > 0.35 and randf() < 0.5)
+	if data.health > 0.0 and amount > 1.0:
+		Audio.play_at("grunt_f" if data.gender == "f" else "grunt_m", global_position + Vector3.UP * 1.5, -2.0, randf_range(0.92, 1.08))
 	if interrupt and data.health > 0.0:
 		_swing += 1
 		_swinging = 0.0
@@ -426,6 +443,7 @@ func _flee_from(src: Node) -> void:
 
 func _die(source: Node, push := Vector3.ZERO) -> void:
 	dead = true
+	Audio.play_at("death_f" if data.gender == "f" else "death_m", global_position + Vector3.UP * 1.4, 0.0, randf_range(0.95, 1.05))
 	collision_layer = 32       # still searchable, no longer in the way
 	Game.dead_npcs[str(data.id)] = true
 	data.alive = false

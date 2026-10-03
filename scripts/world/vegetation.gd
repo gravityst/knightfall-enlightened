@@ -494,6 +494,7 @@ func update_stream(pos: Vector3, force := false) -> void:
 		budget -= 1
 		if _stream_live.has(k):
 			continue
+		Game.mark("trees streamed in")
 		var rids: Array[RID] = []
 		var scenario := get_world_3d().scenario
 		for j in _stream_jobs[k]:
@@ -515,6 +516,7 @@ func _process(_delta: float) -> void:
 	if c.distance_to(_col_center) < 8.0:
 		return
 	_col_center = c
+	Game.mark("tree colliders")
 	var cx := int(floor(c.x / 32.0))
 	var cz := int(floor(c.y / 32.0))
 	var used := 0

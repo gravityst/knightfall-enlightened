@@ -175,6 +175,10 @@ func open_inventory() -> void:
 	_inv_purse = UITheme.label("", 26, UITheme.GOLD, "header")
 	_inv_purse.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(_inv_purse)
+	var x_btn := UITheme.button("Close", func(): close(), 120)
+	x_btn.custom_minimum_size = Vector2(120, 44)
+	x_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(x_btn)
 	v.add_child(HSeparator.new())
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 22)
@@ -587,7 +591,7 @@ func _inv_drop(all := false) -> void:
 
 # ------------------------------------------------------------------ map
 func open_map() -> void:
-	var v := _open("map", Vector2(1180, 880))
+	var v := _open("map", Vector2(1180, 940))
 	_title(v, "Map of Aldmere", "Wheel to zoom, drag to pan  ·  click to set a waypoint, right-click to clear it")
 	var clip := Control.new()
 	clip.custom_minimum_size = Vector2(1140, 760)
@@ -605,6 +609,9 @@ func open_map() -> void:
 	_map_zoom = 1.0
 	_map_off = Vector2.ZERO
 	_layout_map()
+	var close := UITheme.button("Close map  (M or Esc)", func(): close(), 300)
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(close)
 
 
 func _layout_map() -> void:

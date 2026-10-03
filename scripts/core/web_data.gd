@@ -21,7 +21,9 @@ func start() -> void:
 		mounted = true
 		finished.emit.call_deferred(true)
 		return
-	_dir = "user://packs/%s/" % INFO.BUILD
+	# kept in memory, not the browser's storage (syncing 100 MB there froze the page); repeat
+	# visits come from the browser's own download cache
+	_dir = "/tmp/knightfall_%s/" % INFO.BUILD
 	DirAccess.make_dir_recursive_absolute(_dir)
 	_clear_old()
 	for p in INFO.PACKS:
@@ -55,7 +57,7 @@ func _next() -> void:
 func _process(_d: float) -> void:
 	if _http and _http.get_http_client_status() == HTTPClient.STATUS_BODY:
 		var got := _done + float(_http.get_downloaded_bytes())
-		progress.emit(got / maxf(_total, 1.0), "Fetching the island: %d of %d MB (cached for next time)" % [int(got / 1048576.0), int(_total / 1048576.0)])
+		progress.emit(got / maxf(_total, 1.0), "Fetching the island: %d of %d MB" % [int(got / 1048576.0), int(_total / 1048576.0)])
 
 
 func _on_done(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
@@ -92,7 +94,8 @@ func _size(path: String) -> int:
 	return f.get_length() if f else -1
 
 
-## Packs from older builds are dropped so the browser's storage doesn't fill up.
+## Packs from older builds (saved by earlier versions) are dropped so the browser's storage
+## doesn't fill up.
 func _clear_old() -> void:
 	for d in DirAccess.get_directories_at("user://packs/"):
 		if d != INFO.BUILD:

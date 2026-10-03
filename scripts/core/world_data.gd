@@ -23,6 +23,7 @@ var settlements: Array = []
 var pois: Array = []
 var roads: Array = []
 var height_tex: ImageTexture
+var height_img: Image          # the heights as an RF image (for fast collision patches)
 var normal_tex: ImageTexture
 var water_tex: ImageTexture
 var flow_tex: ImageTexture
@@ -104,7 +105,8 @@ func load_all(progress: Callable) -> void:
 	await get_tree().process_frame
 	var bytes := FileAccess.get_file_as_bytes(DIR + "height.bin")
 	heights = bytes.to_float32_array()
-	height_tex = ImageTexture.create_from_image(Image.create_from_data(HM_RES, HM_RES, false, Image.FORMAT_RF, bytes))
+	height_img = Image.create_from_data(HM_RES, HM_RES, false, Image.FORMAT_RF, bytes)
+	height_tex = ImageTexture.create_from_image(height_img)
 	progress.call(0.08, "Charting rivers and lakes")
 	await get_tree().process_frame
 	var wb := FileAccess.get_file_as_bytes(DIR + "water.bin")

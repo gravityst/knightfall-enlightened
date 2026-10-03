@@ -104,7 +104,7 @@ func _build_settlement(s: Dictionary) -> Dictionary:
 		_palms(info, rng)
 	ext.build(node, 3200.0)
 	for ck in inns:
-		(inns[ck] as Builder.Instancer).build(node, 115.0, true)
+		(inns[ck] as Builder.Instancer).build(node, 60.0 if Assets.compat else 115.0, true)
 	return info
 
 
@@ -922,7 +922,7 @@ func _process(delta: float) -> void:
 	for l in lights:
 		var d := l.global_position.distance_to(p)
 		l.visible = d < 60.0
-		l.shadow_enabled = d < 18.0 and l.has_meta("flicker")
+		l.shadow_enabled = d < 18.0 and l.has_meta("flicker") and not Assets.compat   # (the browser: no lamp shadows)
 	for l in street_lights:
 		l.visible = dark and l.global_position.distance_to(p) < 130.0
 

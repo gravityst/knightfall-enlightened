@@ -45,6 +45,9 @@ func setup(spec: Dictionary, sp_name: String, g: Dictionary, m: Node) -> void:
 	_phase = randf() * TAU
 	model = Assets.instance_sized("res://assets/animals/" + String(spec.path), float(spec.len) * randf_range(0.9, 1.12), "xz")
 	add_child(model)
+	if Assets.compat:
+		for gi in model.find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var aps := model.find_children("*", "AnimationPlayer", true, false)
 	if aps.size() > 0:
 		ap = aps[0]
@@ -81,6 +84,7 @@ func setup(spec: Dictionary, sp_name: String, g: Dictionary, m: Node) -> void:
 	_play("Idle")
 	yaw = randf() * TAU
 	home = global_position
+	_sound_t = randf_range(4.0, 30.0)
 
 
 func _model_bounds() -> AABB:
@@ -228,7 +232,7 @@ func _land(delta: float) -> void:
 		if state not in ["attack", "flee", "eat"] and dp < aggro and not pl.get("dead"):
 			threat = pl
 			_set_state("attack", 25.0)
-			Audio.play_at("growl" if species == "bear" else "howl", global_position)
+			Audio.play_at("roar" if species == "bear" else "growl", global_position)
 		elif state in ["idle", "wander"] and species == "wolf" and (night or randf() < 0.002):
 			var prey: Node3D = manager.prey_near(global_position, 70.0)
 			if prey:
@@ -280,7 +284,13 @@ func _land(delta: float) -> void:
 					var dmg := float(sp.get("dmg", 8.0))
 					if threat.has_method("take_damage"):
 						threat.call("take_damage", dmg if threat == pl else 200.0, self, false)
-					Audio.play_at("bite" if species == "wolf" else "growl", global_position)
+					Audio.play_at("bite" if species == "wolf" else "roar", global_position, 0.0 if species == "wolf" else -3.0)
+	if species == "wolf" and night and state in ["idle", "wander", "eat"] and group.members.size() > 0 and group.members[0] == self:
+		_sound_t -= delta
+		if _sound_t <= 0.0:          # the pack's leader howls into the dark now and then
+			_sound_t = randf_range(25.0, 70.0)
+			if dp < 400.0:
+				Audio.play_at("howl", global_position + Vector3.UP, 4.0, randf_range(0.92, 1.08))
 	if kind == "farm":
 		_sound_t -= delta
 		if _sound_t <= 0.0:
@@ -383,6 +393,12 @@ func _water(delta: float) -> void:
 
 # ------------------------------------------------------------------ flying flocks
 func _bird(delta: float) -> void:
+	_sound_t -= delta
+	if _sound_t <= 0.0:
+		_sound_t = randf_range(12.0, 35.0)
+		var call: String = {"crow": "caw", "gull": "gull_cry", "hawk": "screech"}.get(species, "")
+		if call != "" and Game.player_ref and global_position.distance_to(Game.player_ref.global_position) < 130.0:
+			Audio.play_at(call, global_position, 2.0 if species == "hawk" else -2.0, randf_range(0.9, 1.1))
 	var c: Vector3 = group.center
 	if group.get("migrate", false):
 		var dir: Vector3 = group.dir

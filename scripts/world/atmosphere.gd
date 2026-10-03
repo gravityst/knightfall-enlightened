@@ -41,6 +41,7 @@ var _flash := 0.0
 var _next_flash := 6.0
 var precip_kind := "rain"
 var climate := "temperate"
+var sun_shadows := true          # (the perf test switches them off)
 
 
 func setup() -> void:
@@ -66,6 +67,13 @@ func setup() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	if Assets.compat:
+		# the browser: ambient light from a colour that follows the time of day instead of the sky's
+		# light probe, which the moving sun and clouds made it rebuild (and re-mipmap) every frame
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+		sky.radiance_size = Sky.RADIANCE_SIZE_32
+		sky.process_mode = Sky.PROCESS_MODE_QUALITY
 	env.ambient_light_sky_contribution = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.0
@@ -166,7 +174,7 @@ func _build_precipitation() -> void:
 
 func _make_particles(amount: int, box: Vector3, vel: Vector3, life: float, quad: Vector2, col: Color, turb: float) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = int(amount * (0.3 if Assets.compat else 1.0))     # the browser: lighter rain and snow
 	p.lifetime = life
 	p.visibility_aabb = AABB(-box * 1.5, box * 3.0)
 	p.emitting = false
@@ -256,7 +264,7 @@ func update_atmosphere(delta: float, cam: Camera3D) -> void:
 	var golden := 1.0 - smoothstep(0.05, 0.45, sun_dir.y)
 	sun.light_color = Color(1.0, 0.93, 0.84).lerp(Color(1.0, 0.56, 0.3), golden * 0.85)
 	sun.light_energy = sun_up * lerpf(0.9, 1.75, smoothstep(0.0, 0.6, sun_dir.y)) * float(params.sun) + _flash * 3.0
-	sun.shadow_enabled = sun_dir.y > 0.02
+	sun.shadow_enabled = sun_shadows and sun_dir.y > 0.02
 	var moon_up := smoothstep(-0.02, 0.15, moon_dir.y) * (1.0 - sun_up)
 	var moon_bright := 0.25 + 0.75 * (1.0 - absf(moon_phase - 0.5) * 2.0)
 	moon.light_energy = moon_up * 0.32 * moon_bright * lerpf(1.0, 0.35, float(params.cov))
@@ -277,6 +285,9 @@ func update_atmosphere(delta: float, cam: Camera3D) -> void:
 	# ambient & fog
 	var night := 1.0 - sun_up
 	env.ambient_light_energy = lerpf(0.22, 1.0, sun_up) + moon_up * 0.12 + _flash * 2.0
+	if Assets.compat:
+		var sky_tint := Color(0.56, 0.64, 0.78).lerp(Color(0.86, 0.62, 0.46), golden * sun_up * 0.6)
+		env.ambient_light_color = sky_tint.lerp(Color(0.1, 0.13, 0.22), night).lerp(Color(0.55, 0.56, 0.58), float(params.cov) * 0.4)
 	env.background_energy_multiplier = 1.0
 	var fog_day := Color(0.63, 0.71, 0.8).lerp(Color(0.92, 0.66, 0.46), golden * sun_up * 0.7)
 	var fog_col := fog_day.lerp(Color(0.035, 0.045, 0.07), night)

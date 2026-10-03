@@ -33,7 +33,13 @@ var settlement_standing := {}       # settlement name -> bounty (crime weight; f
 var resisting := {}                 # settlement name -> true while the player fights its watch
 var quests: Array = []
 var world_drops: Array = []
-var waypoint := Vector2.INF       # set on the map (click) or by a guide; shown on the compass      # items lying in the world: {id, count, x, y, z, node}              # see scripts/core/quests.gd
+var waypoint := Vector2.INF       # set on the map (click) or by a guide; shown on the compass
+## Performance overlay (page?perf, or --perf-overlay): heavy jobs leave a mark on the frame they
+## run in, so a hitch can be traced to what caused it. ?tour (--tour) walks a set route.
+var perf_overlay := false
+var tour := false
+var frame_marks: PackedStringArray = []
+var _query := ""      # items lying in the world: {id, count, x, y, z, node}              # see scripts/core/quests.gd
 var quest_seq := 0
 const WANTED_AT := 15.0
 var discovered := {}                # location name -> true
@@ -65,6 +71,10 @@ const PRESETS := {
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	var q := str(JavaScriptBridge.eval("location.search")) if OS.has_feature("web") else ""
+	_query = q
+	perf_overlay = q.contains("perf") or "--perf-overlay" in OS.get_cmdline_user_args()
+	tour = q.contains("tour") or "--tour" in OS.get_cmdline_user_args()
 	_register_inputs()
 	load_settings()
 
@@ -196,6 +206,8 @@ func use_item(id: String) -> String:
 					return "Your waterskin is empty. Refill it at fresh water."
 				waterskin_charges -= 1
 				change_stat("thirst", float(it.thirst))
+				if player_ref:
+					Audio.play_at("drink", player_ref.global_position, -2.0)
 				return "You drink from the waterskin (%d sips left)." % waterskin_charges
 			if it.has("cookable") and not _near_fire():
 				return "%s should be cooked over a fire first." % it.name
@@ -203,6 +215,8 @@ func use_item(id: String) -> String:
 			for k in ["hunger", "thirst", "health", "stamina", "warmth"]:
 				if it.has(k):
 					change_stat(k, float(it[k]))
+			if player_ref:
+				Audio.play_at("drink" if String(it.type) == "drink" else ("item_pick" if it.has("health") else "eat"), player_ref.global_position, -2.0)
 			return "You consume the %s." % String(it.name).to_lower()
 		"weapon", "shield", "cloak", "armor":
 			equip(id)
@@ -323,6 +337,16 @@ func _decay_bounties() -> void:
 			resisting.erase(s)
 
 
+## A test switch, from the page address (?name) or the command line (--name).
+func debug_flag(name: String) -> bool:
+	return _query.contains(name) if OS.has_feature("web") else ("--" + name) in OS.get_cmdline_user_args()
+
+
+func mark(tag: String) -> void:
+	if perf_overlay:
+		frame_marks.append(tag)
+
+
 func discover(location: String) -> bool:
 	if discovered.has(location):
 		return false
@@ -381,8 +405,10 @@ func apply_display_settings() -> void:
 	var vp := get_viewport()
 	var rs := float(settings.render_scale)
 	vp.scaling_3d_scale = rs
+	if Assets.compat:
+		RenderingServer.directional_shadow_atlas_set_size(2048, true)    # as the browser build
 	if OS.has_feature("web"):
-		# WebGL 2: no temporal upscalers or TAA; plain scaling and FXAA
+		# WebGL 2: no temporal upscalers or TAA; plain scaling
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		vp.use_taa = false
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED

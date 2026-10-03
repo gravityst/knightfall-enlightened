@@ -4,9 +4,10 @@ extends Node3D
 ## daily routines, market-day traders, road travellers & mounted patrols, bandits, horses
 ## for sale. Streams NPC bodies in and out around the player.
 
-var SPAWN_R := 75.0 if Assets.compat else 100.0       # the browser keeps fewer townsfolk awake
-var DESPAWN_R := 100.0 if Assets.compat else 130.0
-const MAX_ACTIVE := 70
+var SPAWN_R := 45.0 if Assets.compat else 100.0       # the browser keeps fewer townsfolk awake
+var DESPAWN_R := 60.0 if Assets.compat else 130.0
+var MAX_ACTIVE := 14 if Assets.compat else 70
+var _spawn_cd := 0.0
 
 const PERSONALITIES := ["friendly", "crabby", "suspicious", "cautious", "helpful", "hostile", "cheerful", "grumpy", "shy", "boastful", "pious", "greedy"]
 const RANKS := {"duke": 1, "official": 2, "knight": 3, "falconer": 4, "guard": 5, "cook": 6, "servant": 7}
@@ -581,7 +582,10 @@ func _process(delta: float) -> void:
 	if pl == null:
 		return
 	_move_travellers(delta)
-	_spawn_next(pl.global_position)
+	_spawn_cd -= delta
+	if _spawn_cd <= 0.0:
+		_spawn_cd = 0.2 if Assets.compat else 0.0      # one townsperson at a time in the browser
+		_spawn_next(pl.global_position)
 	_tick -= delta
 	if _tick > 0.0:
 		return
@@ -648,6 +652,7 @@ func _place_virtual(d: NPCData) -> void:
 
 
 func _spawn(d: NPCData) -> void:
+	Game.mark("townsfolk spawn")
 	var n := NPC.new()
 	add_child(n)
 	n.setup(d, self)
@@ -812,6 +817,7 @@ func player_attacked(npc: NPC) -> void:
 
 
 func npc_died(npc: NPC, source: Node) -> void:
+	Game.mark("death")
 	var d := npc.data
 	if source == Game.player_ref:
 		if d.hostile:

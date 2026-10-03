@@ -500,6 +500,7 @@ func _on_location(n: String) -> void:
 
 func show_banner(title: String, sub: String) -> void:
 	_wander = 0.0
+	Game.mark("banner")
 	banner_title.text = title
 	banner_sub.text = sub
 	var tw := create_tween()

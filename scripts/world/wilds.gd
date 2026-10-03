@@ -236,6 +236,7 @@ func _chest(root: Node3D, s: Dictionary, lp: Vector2, yaw: float, model := "Ches
 
 
 func _build_site(s: Dictionary) -> Node3D:
+	Game.mark("wild place built")
 	var root := Node3D.new()
 	add_child(root)
 	root.global_position = Vector3(float(s.x), _ground(float(s.x), float(s.z)), float(s.z))
@@ -487,6 +488,7 @@ func _place_center(n: String) -> Vector3:
 
 
 func _build_sign(g: Dictionary) -> Node3D:
+	Game.mark("signpost built")
 	var root := Node3D.new()
 	add_child(root)
 	root.global_position = Vector3(float(g.x), _ground(float(g.x), float(g.z)), float(g.z))

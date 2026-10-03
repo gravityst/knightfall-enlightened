@@ -23,6 +23,9 @@ python3 "$SRC/tools/web/prepare.py" "$WORK"
 echo "== importing"
 "$GODOT" --headless --path "$WORK" --import >/dev/null 2>&1 || true
 
+echo "== rendering the synthesised sounds"
+"$GODOT" --headless --path "$WORK" -- --render-sounds="$WORK/sounds/gen" 2>&1 | grep -E "RENDERED|ERROR" || true
+
 echo "== packing the island's data"
 "$GODOT" --headless --path "$WORK" -s res://tools/web/pack_data.gd -- "$OUT" 2>&1 | grep -E "PACK|BUILD|ERROR" || true
 

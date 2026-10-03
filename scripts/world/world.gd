@@ -114,6 +114,8 @@ func _load() -> void:
 		atmosphere.set_weather("clear", true)
 	hud = preload("res://scripts/ui/hud.gd").new()
 	add_child(hud)
+	if Game.perf_overlay or Game.tour:
+		add_child(preload("res://scripts/ui/perf_overlay.gd").new())
 	terrain.update_view(player.cam.global_position, true)
 	terrain.update_collision(player.global_position)
 	if vegetation:
@@ -125,6 +127,9 @@ func _load() -> void:
 		add_child(load("res://tools/probe5.gd").new())
 	if "--perf" in OS.get_cmdline_user_args():
 		add_child(load("res://tools/perf.gd").new())
+	if Assets.compat and not Game.debug_flag("nowarm"):
+		_progress(0.985, "Lighting the lamps")
+		await _warm_shaders()
 	for i in 8:
 		await get_tree().process_frame
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Game.settings.vsync else DisplayServer.VSYNC_DISABLED)
@@ -557,6 +562,115 @@ func _frame_npc(sh: Dictionary) -> void:
 	var to: Vector3 = best.global_position + Vector3(0, 1.0, 0) - cam_at
 	player.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
 	player.head.rotation.x = player._pitch
+
+
+## The browser compiles each shader the first time it's drawn, which froze the game for seconds on
+## reaching a town or at nightfall. So everything is drawn once here, tiny and hidden behind the
+## loading screen - each mesh with its own materials and in the same form the game draws it (plain,
+## or instanced with or without per-instance colour and data, which WebGL insists match) - under the
+## sun, an oil lamp and a lantern beam, casting a shadow, beside a townsperson, every beast and the
+## fires and blood the game makes later.
+func _warm_shaders() -> void:
+	var rig := Node3D.new()
+	add_child(rig)
+	rig.global_transform = player.cam.global_transform.translated_local(Vector3(0, 0, -1.4))
+	var slot := [0]
+	var place := func(n: Node3D, size: float) -> void:
+		var i: int = slot[0]
+		slot[0] = i + 1
+		n.position = Vector3(-0.45 + (i % 40) * 0.023, -0.25 + (i / 40) * 0.023, 0.0)
+		n.scale = Vector3.ONE * size
+		rig.add_child(n)
+	var folk := CharacterModel.new()
+	place.call(folk, 0.006)
+	folk.build({"gender": "f", "outfit": "Peasant", "hood": true, "torch": true})
+	for f in [FireFX.flames(0.2, 0.4), FireFX.flames(0.1, 0.2)]:
+		place.call(f, 0.05)
+	FireFX.burst(rig, rig.global_position, "blood")
+	FireFX.burst(rig, rig.global_position, "sparks")
+	var later := ["res://assets/animals/Horse.glb", "res://assets/animals/Horse_White.glb", "res://assets/village/Prop_Wagon.gltf",
+		"res://assets/village/Wall_UnevenBrick_Straight.gltf", "res://assets/village/Wall_UnevenBrick_Window_Wide_Round.gltf", "res://assets/village/Wall_UnevenBrick_Door_Round.gltf",
+		"res://assets/village/Prop_Vine2.gltf", "res://assets/village/Prop_Vine5.gltf", "res://assets/village/Prop_Brick1.gltf"]
+	for sp in preload("res://scripts/actors/wildlife.gd").SPECIES.values():
+		later.append("res://assets/animals/" + String(sp.path))
+	for f in ["Barrel", "Crate_Wooden", "Pot_1", "Bag", "Chest_Wood", "Pouch_Large", "BookStand", "CandleStick", "CandleStick_Triple", "CandleStick_Stand",
+			"Banner_2", "Chalice", "Lantern_Wall", "Vase_Rubble_Medium", "Shield_Wooden", "Sword_Bronze", "Torch_Metal"]:
+		later.append("res://assets/props/%s.gltf" % f)
+	var seen := {}
+	for path in later:
+		if ResourceLoader.exists(path) and not seen.has(path):
+			seen[path] = true
+			place.call(Assets.instance_sized(path, 0.02, "max"), 1.0)
+	var statue := MeshInstance3D.new()
+	statue.mesh = BoxMesh.new()
+	statue.material_override = preload("res://scripts/world/settlements.gd")._statue_stone()
+	place.call(statue, 0.01)
+	# one of every mesh in the world, drawn as the world draws it
+	var n := 0
+	for gi in find_children("*", "GeometryInstance3D", true, false):
+		if gi.get_parent() == rig or rig.is_ancestor_of(gi):
+			continue
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh and (gi as MeshInstance3D).skeleton.is_empty():
+			var mi := gi as MeshInstance3D
+			var key := "m%d|%d" % [mi.mesh.get_instance_id(), mi.material_override.get_instance_id() if mi.material_override else 0]
+			if seen.has(key):
+				continue
+			seen[key] = true
+			var c := MeshInstance3D.new()
+			c.mesh = mi.mesh
+			c.material_override = mi.material_override
+			for si in mi.mesh.get_surface_count():
+				c.set_surface_override_material(si, mi.get_surface_override_material(si))
+			place.call(c, 0.01 / maxf(mi.mesh.get_aabb().get_longest_axis_size(), 0.01))
+			n += 1
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
+			var src := (gi as MultiMeshInstance3D).multimesh
+			var key := "mm%d|%s%s|%d" % [src.mesh.get_instance_id(), src.use_colors, src.use_custom_data, gi.material_override.get_instance_id() if gi.material_override else 0]
+			if seen.has(key):
+				continue
+			seen[key] = true
+			place.call(_warm_batch(src.mesh, src.use_colors, src.use_custom_data, gi.material_override), 0.01 / maxf(src.mesh.get_aabb().get_longest_axis_size(), 0.01))
+			n += 1
+	if vegetation:
+		for m in vegetation.get("_meshes"):
+			for custom in [false, true]:
+				place.call(_warm_batch(m, false, custom, null), 0.01 / maxf((m as Mesh).get_aabb().get_longest_axis_size(), 0.01))
+				n += 1
+		var imp = vegetation.get("_imp_mesh")
+		if imp:
+			place.call(_warm_batch(imp, false, true, vegetation.get("_imp_material")), 0.01)
+		if vegetation.grass:
+			for m in vegetation.grass.get("_meshes"):
+				if m is Mesh:
+					place.call(_warm_batch(m, false, false, null), 0.01 / maxf((m as Mesh).get_aabb().get_longest_axis_size(), 0.01))
+					n += 1
+	var omni := OmniLight3D.new()
+	omni.omni_range = 4.0
+	omni.position = Vector3(0, 0, 0.4)
+	rig.add_child(omni)
+	var spot := SpotLight3D.new()
+	spot.spot_range = 5.0
+	spot.spot_angle = 60.0
+	spot.position = Vector3(0, 0, 1.0)
+	rig.add_child(spot)
+	for f in 4:
+		await get_tree().process_frame
+	rig.queue_free()
+	print("Warmed %d meshes" % n)
+
+
+func _warm_batch(mesh: Mesh, colors: bool, custom: bool, mat: Material) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = colors
+	mm.use_custom_data = custom
+	mm.mesh = mesh
+	mm.instance_count = 1
+	mm.set_instance_transform(0, Transform3D())
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = mat
+	return mmi
 
 
 ## Shot helper: stands back from a wild place of the given kind ("sign" = a signpost) and looks at it.

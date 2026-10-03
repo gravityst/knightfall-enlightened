@@ -9,7 +9,7 @@ const LIMIT := 90 * 1048576
 func _init() -> void:
 	var out: String = OS.get_cmdline_user_args()[0]
 	var files := []
-	for dir in ["world", "sounds"]:
+	for dir in ["world", "sounds", "sounds/gen"]:
 		for f in DirAccess.get_files_at("res://" + dir):
 			if not f.begins_with("."):
 				files.append("res://%s/%s" % [dir, f])

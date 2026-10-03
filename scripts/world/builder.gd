@@ -59,7 +59,11 @@ class Instancer:
 			mm.buffer = buf
 			var mi := MultiMeshInstance3D.new()
 			mi.multimesh = mm
-			mi.visibility_range_end = vis_end
+			# small pieces drop out sooner than walls and roofs (each kind is a draw call)
+			var size := mm.mesh.get_aabb().get_longest_axis_size()
+			var cap: float = (120.0 if size < 1.2 else (260.0 if size < 4.0 else 900.0)) if Assets.compat \
+				else (220.0 if size < 1.2 else (600.0 if size < 4.0 else INF))
+			mi.visibility_range_end = minf(vis_end, cap)
 			if fade:
 				mi.visibility_range_end_margin = 10.0
 				mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

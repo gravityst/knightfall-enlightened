@@ -216,24 +216,17 @@ func update_collision(p: Vector3) -> void:
 	if c.distance_to(_col_center) < 40.0:
 		return
 	_col_center = c
-	var H := WorldData.heights
-	var res := WorldData.HM_RES
+	Game.mark("terrain collision")
 	var t := WorldData.HM_TEXEL
 	var ci := int(round((p.x + WorldData.HALF) / t))
 	var cj := int(round((p.z + WorldData.HALF) / t))
 	var i0 := ci - COL_N / 2
 	var j0 := cj - COL_N / 2
-	var data := PackedFloat32Array()
-	data.resize(COL_N * COL_N)
-	for j in COL_N:
-		var jj := clampi(j0 + j, 0, res - 1) * res
-		var row := j * COL_N
-		for i in COL_N:
-			data[row + i] = H[jj + clampi(i0 + i, 0, res - 1)] / t
+	# cut the patch out of the height image and let the engine convert it (heights / texel)
+	var sub := Image.create(COL_N, COL_N, false, Image.FORMAT_RF)
+	sub.blit_rect(WorldData.height_img, Rect2i(i0, j0, COL_N, COL_N), Vector2i.ZERO)
 	var shape := HeightMapShape3D.new()
-	shape.map_width = COL_N
-	shape.map_depth = COL_N
-	shape.map_data = data
+	shape.update_map_data_from_image(sub, 0.0, 1.0 / t)
 	_col_shape.shape = shape
 	# HeightMapShape3D is centred on its origin with 1-unit spacing; uniform scale by texel size.
 	var cx := -WorldData.HALF + (i0 + (COL_N - 1) * 0.5) * t
