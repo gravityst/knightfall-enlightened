@@ -44,6 +44,7 @@ func setup(spec: Dictionary, sp_name: String, g: Dictionary, m: Node) -> void:
 	hp = float(spec.hp)
 	_phase = randf() * TAU
 	model = Assets.instance_sized("res://assets/animals/" + String(spec.path), float(spec.len) * randf_range(0.9, 1.12), "xz")
+	Game.mark("animal model")
 	add_child(model)
 	if Assets.compat:
 		for gi in model.find_children("*", "GeometryInstance3D", true, false):
@@ -81,7 +82,9 @@ func setup(spec: Dictionary, sp_name: String, g: Dictionary, m: Node) -> void:
 		cs2.shape = sph
 		body.add_child(cs2)
 		add_child(body)
+	Game.mark("animal body")
 	_play("Idle")
+	Game.mark("animal anim")
 	yaw = randf() * TAU
 	home = global_position
 	_sound_t = randf_range(4.0, 30.0)

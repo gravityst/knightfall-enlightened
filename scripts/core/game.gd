@@ -38,6 +38,7 @@ var waypoint := Vector2.INF       # set on the map (click) or by a guide; shown 
 ## run in, so a hitch can be traced to what caused it. ?tour (--tour) walks a set route.
 var perf_overlay := false
 var tour := false
+var mobile := false   # a phone or tablet: touch controls, a larger interface and lighter graphics
 var frame_marks: PackedStringArray = []
 var _query := ""      # items lying in the world: {id, count, x, y, z, node}              # see scripts/core/quests.gd
 var quest_seq := 0
@@ -75,6 +76,7 @@ func _ready() -> void:
 	_query = q
 	perf_overlay = q.contains("perf") or "--perf-overlay" in OS.get_cmdline_user_args()
 	tour = q.contains("tour") or "--tour" in OS.get_cmdline_user_args()
+	mobile = _detect_mobile()
 	_register_inputs()
 	load_settings()
 
@@ -342,9 +344,14 @@ func debug_flag(name: String) -> bool:
 	return _query.contains(name) if OS.has_feature("web") else ("--" + name) in OS.get_cmdline_user_args()
 
 
+## Perf overlay: notes a job starting this frame; a hitch lists them, each with the time since
+## the one before it (so a job's own cost shows on the mark that follows it, or at "end").
+var mark_t := 0
 func mark(tag: String) -> void:
 	if perf_overlay:
-		frame_marks.append(tag)
+		var now := Time.get_ticks_usec()
+		frame_marks.append("%s (+%d ms)" % [tag, (now - mark_t) / 1000])
+		mark_t = now
 
 
 func discover(location: String) -> bool:
@@ -360,13 +367,20 @@ func load_settings() -> void:
 	if cf.load(SETTINGS_PATH) == OK:
 		for k in settings:
 			settings[k] = cf.get_value("settings", k, settings[k])
-	elif OS.has_feature("web"):
+	elif OS.has_feature("web") or mobile:
 		# the browser build: WebGL 2 can't afford the desktop's shadows, grass or draw distance
 		settings.merge(PRESETS.low, true)
 		settings.preset = "low"
 		settings.render_scale = 1.0
 		settings.view_distance = 0.55
 		settings.grass_density = 0.3
+		if mobile:
+			# a phone's GPU: a nearer horizon, sparse grass, and the 3D drawn at about 480 lines
+			# (the interface stays sharp at the screen's own resolution)
+			settings.view_distance = 0.42
+			settings.grass_density = 0.12
+			settings.render_scale = clampf(480.0 / maxf(float(get_window().size.y), 1.0), 0.35, 1.0)
+			settings.mouse_sensitivity = 0.0035
 	elif DisplayServer.screen_get_size().x * DisplayServer.screen_get_scale() > 2600.0:
 		settings.render_scale = 0.5    # 4K panel: FSR 2 reconstructs 4K from a 1080p internal image
 	for arg in OS.get_cmdline_user_args():
@@ -406,15 +420,15 @@ func apply_display_settings() -> void:
 	var rs := float(settings.render_scale)
 	vp.scaling_3d_scale = rs
 	if Assets.compat:
-		RenderingServer.directional_shadow_atlas_set_size(2048, true)    # as the browser build
+		RenderingServer.directional_shadow_atlas_set_size(1024 if mobile else 2048, true)    # as the browser build
 	if OS.has_feature("web"):
 		# WebGL 2: no temporal upscalers or TAA; plain scaling
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		vp.use_taa = false
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 		vp.msaa_3d = Viewport.MSAA_DISABLED
-		vp.mesh_lod_threshold = 1.0 / maxf(float(settings.view_distance), 0.3)
-		win.content_scale_factor = clampf(float(settings.get("ui_scale", 1.0)), 0.75, 1.3)
+		vp.mesh_lod_threshold = (1.6 if mobile else 1.0) / maxf(float(settings.view_distance), 0.3)
+		win.content_scale_factor = ui_factor()
 		AudioServer.set_bus_volume_db(0, linear_to_db(float(settings.master_volume)))
 		return
 	if rs < 0.99 and settings.fsr:
@@ -428,8 +442,26 @@ func apply_display_settings() -> void:
 	vp.msaa_3d = Viewport.MSAA_DISABLED
 	vp.mesh_lod_threshold = 1.0 / maxf(float(settings.view_distance), 0.3)
 	# the interface is laid out for 1080p and scales with the window (2x on a 4K screen); this trims it
-	win.content_scale_factor = clampf(float(settings.get("ui_scale", 1.0)), 0.75, 1.3)
+	win.content_scale_factor = ui_factor()
 	AudioServer.set_bus_volume_db(0, linear_to_db(float(settings.master_volume)))
+
+
+## The interface is laid out for 1080 lines and scales with the window. A phone shows it as if
+## the screen had 720, so text and buttons are big enough to read and press in the hand.
+func ui_factor() -> float:
+	return (1.5 if mobile else 1.0) * clampf(float(settings.get("ui_scale", 1.0)), 0.75, 1.3)
+
+
+## Phones and tablets (a touch screen and no mouse): ?mobile on the page or --mobile on the
+## desktop tries it out, ?desktop opts out.
+func _detect_mobile() -> bool:
+	if debug_flag("desktop"):
+		return false
+	if debug_flag("mobile") or OS.has_feature("mobile"):
+		return true
+	if OS.has_feature("web"):
+		return bool(JavaScriptBridge.eval("matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches"))
+	return false
 
 
 # ---------------------------------------------------------------- input map

@@ -3,27 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cq6hjcmbtdnqi"
-path="res://.godot/imported/T_Trim_Props_BaseColor.png-f76e8aa8a2ec3f736a8552e4eace26ec.ctex"
+path.s3tc="res://.godot/imported/T_Trim_Props_BaseColor.png-f76e8aa8a2ec3f736a8552e4eace26ec.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/props/T_Trim_Props_BaseColor.png"
-dest_files=["res://.godot/imported/T_Trim_Props_BaseColor.png-f76e8aa8a2ec3f736a8552e4eace26ec.ctex"]
+dest_files=["res://.godot/imported/T_Trim_Props_BaseColor.png-f76e8aa8a2ec3f736a8552e4eace26ec.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

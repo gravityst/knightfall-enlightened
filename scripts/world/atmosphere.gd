@@ -222,13 +222,13 @@ func apply_graphics() -> void:
 	env.volumetric_fog_enabled = bool(s.volumetric_fog)
 	env.glow_enabled = bool(s.glow)
 	var q := int(s.shadows)
-	var dist: float = [70.0, 110.0, 140.0, 240.0][q] * clampf(float(s.view_distance), 0.6, 1.6)
+	var dist: float = [70.0, 110.0, 140.0, 240.0][q] * clampf(float(s.view_distance), 0.6, 1.6) * (0.65 if Game.mobile else 1.0)
 	sun.directional_shadow_max_distance = dist
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_split_1 = 0.06
 	sun.directional_shadow_split_2 = 0.18
 	sun.directional_shadow_split_3 = 0.45
-	RenderingServer.directional_shadow_atlas_set_size([2048, 4096, 4096, 8192][q], true)
+	RenderingServer.directional_shadow_atlas_set_size(1024 if Game.mobile else [2048, 4096, 4096, 8192][q], true)
 	RenderingServer.directional_soft_shadow_filter_set_quality([1, 1, 2, 3][q] as RenderingServer.ShadowQuality)
 	RenderingServer.positional_soft_shadow_filter_set_quality([1, 1, 2, 3][q] as RenderingServer.ShadowQuality)
 	env.ssr_max_steps = 48 if q < 3 else 96

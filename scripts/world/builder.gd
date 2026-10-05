@@ -160,6 +160,20 @@ static var _mat_cache := {}
 static func style_remap(style: String) -> Dictionary:
 	if _mat_cache.has(style):
 		return _mat_cache[style]
+	if style.ends_with("+castle"):
+		# a castle's outbuildings: the climate's look, under slate rather than red clay tiles
+		var castle: Dictionary = style_remap(style.trim_suffix("+castle")).duplicate()
+		for p in Assets.parts(V + "Roof_RoundTiles_6x8.gltf"):
+			for s in (p[0] as Mesh).get_surface_count():
+				var src: Material = (p[0] as Mesh).surface_get_material(s)
+				if src and "RoundTiles" in src.resource_name:
+					var m: BaseMaterial3D = (castle.get(src.resource_name, src) as BaseMaterial3D).duplicate()
+					m.albedo_texture = null
+					m.albedo_color = Color(0.21, 0.25, 0.31)
+					m.roughness = 0.58
+					castle[src.resource_name] = m
+		_mat_cache[style] = castle
+		return castle
 	var remap := {}
 	var probe := ["Wall_Plaster_Straight.gltf", "Roof_RoundTiles_6x8.gltf", "Wall_UnevenBrick_Straight.gltf", "Floor_WoodDark.gltf"]
 	var mats := {}

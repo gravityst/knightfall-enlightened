@@ -3,27 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://di8jhqrbxlbrn"
-path="res://.godot/imported/modular_fort_01_trim_arm_2k.jpg-640517ca835e2618c5526016e64bcb5a.ctex"
+path.s3tc="res://.godot/imported/modular_fort_01_trim_arm_2k.jpg-640517ca835e2618c5526016e64bcb5a.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/castle/modular_fort_01/textures/modular_fort_01_trim_arm_2k.jpg"
-dest_files=["res://.godot/imported/modular_fort_01_trim_arm_2k.jpg-640517ca835e2618c5526016e64bcb5a.ctex"]
+dest_files=["res://.godot/imported/modular_fort_01_trim_arm_2k.jpg-640517ca835e2618c5526016e64bcb5a.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

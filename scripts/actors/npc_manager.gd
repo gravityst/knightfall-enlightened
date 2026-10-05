@@ -4,13 +4,14 @@ extends Node3D
 ## daily routines, market-day traders, road travellers & mounted patrols, bandits, horses
 ## for sale. Streams NPC bodies in and out around the player.
 
-var SPAWN_R := 45.0 if Assets.compat else 100.0       # the browser keeps fewer townsfolk awake
-var DESPAWN_R := 60.0 if Assets.compat else 130.0
-var MAX_ACTIVE := 14 if Assets.compat else 70
+var SPAWN_R := (36.0 if Game.mobile else 45.0) if Assets.compat else 100.0       # the browser keeps fewer townsfolk awake
+var DESPAWN_R := (50.0 if Game.mobile else 60.0) if Assets.compat else 130.0
+var MAX_ACTIVE := (9 if Game.mobile else 14) if Assets.compat else 70
 var _spawn_cd := 0.0
 
 const PERSONALITIES := ["friendly", "crabby", "suspicious", "cautious", "helpful", "hostile", "cheerful", "grumpy", "shy", "boastful", "pious", "greedy"]
-const RANKS := {"duke": 1, "official": 2, "knight": 3, "falconer": 4, "guard": 5, "cook": 6, "servant": 7}
+const RANKS := {"duke": 1, "queen": 1, "official": 2, "knight": 3, "falconer": 4, "guard": 5, "cook": 6, "servant": 7}
+const ROYAL_SEAT := "Castle Ravenmoor"     # the King of Aldmere holds court here; the other castles have dukes
 const NAMES := {
 	"temperate": {"m": ["Aldric", "Edmund", "Gareth", "Rowan", "Tobias", "Matthias", "Cedric", "Hugh", "Osric", "Alaric", "Bertram", "Conrad", "Dunstan", "Edgar", "Godfrey", "Harold", "Leofric", "Merrick", "Oswin", "Percival", "Roland", "Wilfred", "Geoffrey", "Baldwin", "Walter", "Simon"],
 		"f": ["Elena", "Maud", "Agnes", "Beatrice", "Rosalind", "Isolde", "Edith", "Gwendolyn", "Matilda", "Eleanor", "Alys", "Cecily", "Juliana", "Margery", "Sibyl", "Joan", "Helewise", "Avelina", "Clarice", "Emma"]},
@@ -21,6 +22,9 @@ const NAMES := {
 }
 const SURNAMES := ["Ashdown", "Brightwater", "Thorne", "Fletcher", "Cooper", "Mason", "Ward", "Hollins", "Greaves", "Oakes", "Marsh", "Fairweather", "Holt", "Crane", "Blackwood", "Merriweather"]
 const DESERT_SUR := ["al-Qadir", "ibn Rashid", "al-Sahra", "ibn Malik", "al-Wadi", "bint Harun", "al-Nur"]
+## Complexions, fair to dark (average skin albedo, linear): see the outfit shader's skin tone.
+const SKIN_TONES := [Color(0.72, 0.5, 0.4), Color(0.62, 0.42, 0.32), Color(0.52, 0.34, 0.24), Color(0.44, 0.3, 0.19),
+	Color(0.34, 0.21, 0.13), Color(0.24, 0.14, 0.085), Color(0.15, 0.09, 0.055)]
 const HAIR_COLORS := [Color(0.08, 0.06, 0.05), Color(0.22, 0.14, 0.08), Color(0.35, 0.22, 0.12), Color(0.6, 0.45, 0.22), Color(0.55, 0.25, 0.1), Color(0.5, 0.5, 0.5)]
 
 
@@ -104,6 +108,8 @@ func _new(info: Dictionary, role: String, gender := "") -> NPCData:
 	d.gender = gender if gender != "" else ("m" if _rng.randf() < (0.85 if role in ["knight", "guard", "blacksmith"] else 0.55) else "f")
 	if role in ["knight", "guard", "duke"]:
 		d.gender = "m" if role != "knight" or _rng.randf() < 0.85 else "f"
+	if role == "queen":
+		d.gender = "f"
 	d.personality = PERSONALITIES[_rng.randi() % PERSONALITIES.size()]
 	match role:
 		"official": d.personality = "snobbish"
@@ -112,6 +118,7 @@ func _new(info: Dictionary, role: String, gender := "") -> NPCData:
 		"guard": d.personality = "stern"
 		"servant": d.personality = "meek"
 		"duke": d.personality = ["stern", "friendly", "boastful"][_rng.randi() % 3]
+		"queen": d.personality = ["gracious", "stern"][_rng.randi() % 2]
 	d.name = _make_name(d)
 	d.look = _make_look(d)
 	d.health = 160.0 if role == "knight" else (120.0 if role in ["guard", "bandit"] else 70.0)
@@ -126,7 +133,8 @@ func _make_name(d: NPCData) -> String:
 	var first: String = pool[d.gender][_rng.randi() % pool[d.gender].size()]
 	match d.role:
 		"knight": return ("Sir " if d.gender == "m" else "Dame ") + first
-		"duke": return "Duke %s of %s" % [first, String(d.sname).replace("Castle ", "")]
+		"duke": return ("King %s" % first) if d.sname == ROYAL_SEAT else "Duke %s of %s" % [first, String(d.sname).replace("Castle ", "")]
+		"queen": return "Queen %s" % first
 		"official": return ("Lord " if d.gender == "m" else "Lady ") + first + " " + SURNAMES[_rng.randi() % SURNAMES.size()]
 	if d.climate == "desert":
 		return first + " " + DESERT_SUR[_rng.randi() % DESERT_SUR.size()]
@@ -142,8 +150,8 @@ func _make_look(d: NPCData) -> Dictionary:
 	L.hair = hairs[_rng.randi() % hairs.size()]
 	L.beard = d.gender == "m" and _rng.randf() < 0.45
 	L.hair_color = HAIR_COLORS[_rng.randi() % HAIR_COLORS.size()]
-	var skin := _rng.randf_range(0.82, 1.05)
-	L.skin = Color(skin, skin * 0.97, skin * 0.94)
+	# mostly fair to olive in the heartland, now and then darker (traders and travellers)
+	L.skin = _complexion(4, 6) if _rng.randf() < 0.12 else _complexion(0, 4)
 	match d.climate:
 		"cold":
 			L.outfit = "Ranger"
@@ -152,7 +160,7 @@ func _make_look(d: NPCData) -> Dictionary:
 			L.val = _rng.randf_range(0.55, 0.8)
 			L.sat = _rng.randf_range(0.35, 0.7)
 			L.hue = _rng.randf_range(-0.06, 0.04)
-			L.skin = Color(1.04, 1.0, 0.98) * _rng.randf_range(0.95, 1.05)
+			L.skin = _complexion(0, 2)
 		"desert":
 			L.outfit = "Peasant"
 			L.hood = _rng.randf() < 0.8
@@ -160,8 +168,7 @@ func _make_look(d: NPCData) -> Dictionary:
 			L.val = _rng.randf_range(1.15, 1.45)
 			L.hue = [0.0, 0.58, 0.08][_rng.randi() % 3]
 			L.dust = 0.25
-			var s := _rng.randf_range(0.62, 0.85)
-			L.skin = Color(s, s * 0.82, s * 0.68)
+			L.skin = _complexion(2, 6)
 			L.hair_color = Color(0.06, 0.05, 0.04)
 	match d.role:
 		"knight":
@@ -175,6 +182,10 @@ func _make_look(d: NPCData) -> Dictionary:
 				L.shield = true; L.shield_model = "res://assets/props/Shield_Wooden.gltf"
 		"duke":
 			L.outfit = "Ranger"; L.crown = true; L.hue = [0.72, 0.95, 0.12][_rng.randi() % 3]; L.sat = 1.7; L.val = 0.85; L.hood = false; L.pauldron = true; L.beard = true
+			if d.sname == ROYAL_SEAT:
+				L.hue = 0.76; L.sat = 1.6; L.val = 0.95; L.steel = 0.2          # the king: royal crimson
+		"queen":
+			L.outfit = "Ranger"; L.crown = true; L.hue = 0.74; L.sat = 1.6; L.val = 0.95; L.hood = false; L.pauldron = false
 		"official":
 			L.outfit = "Ranger"; L.hue = [0.62, 0.92, 0.33, 0.75][_rng.randi() % 4]; L.sat = 1.5; L.val = 0.8; L.hood = false; L.pauldron = false
 		"falconer":
@@ -194,6 +205,12 @@ func _make_look(d: NPCData) -> Dictionary:
 		"farmer":
 			L.dust = 0.25
 	return L
+
+
+func _complexion(lo: int, hi: int) -> Color:
+	var c: Color = SKIN_TONES[_rng.randi_range(lo, hi)]
+	var k := _rng.randf_range(0.92, 1.08)
+	return Color(c.r * k, c.g * k, c.b * k)
 
 
 func _buildings(info: Dictionary, types: Array) -> Array:
@@ -240,6 +257,9 @@ func _populate(info: Dictionary) -> void:
 		"castle":
 			plan = ["duke", "official", "official", "official", "knight", "knight", "knight", "knight", "knight", "falconer", "guard", "guard", "guard", "guard", "guard", "guard",
 				"cook", "cook", "servant", "servant", "servant", "servant", "stablemaster"]
+			if info.name == ROYAL_SEAT:
+				plan.insert(1, "queen")
+				plan.append_array(["knight", "knight", "guard", "guard"])      # the royal household
 	for role in plan:
 		var d := _new(info, role)
 		_assign(d, info, used, beds)
@@ -259,11 +279,11 @@ func _assign(d: NPCData, info: Dictionary, used: Dictionary, beds: Dictionary) -
 			d.work = _spot(info, ["keep"], "throne_guard", used) if info.type == "castle" else {}
 		"guard":
 			d.bed = _bed(info, ["barracks"], beds)
-		"duke":
+		"duke", "queen":
 			d.bed = _bed(info, ["keep"], beds)
 			for b in _buildings(info, ["keep"]):
 				for s in b.spots.sit:
-					if s.tag == "throne":
+					if s.tag == ("throne" if d.role == "duke" else "consort"):
 						d.seat = s
 		"official":
 			d.work = _spot(info, ["keep", "townhall"], "official", used)
@@ -314,7 +334,7 @@ func _assign(d: NPCData, info: Dictionary, used: Dictionary, beds: Dictionary) -
 			d.work = _spot(info, ["house"], "hearth", used)
 	for b in _buildings(info, ["tavern", "keep", "chapel", "townhall"]):
 		for s in b.spots.sit:
-			if not used.has(s) and s.tag != "throne" and d.role not in ["guard", "cook", "servant", "duke"]:
+			if not used.has(s) and s.tag not in ["throne", "consort"] and d.role not in ["guard", "cook", "servant", "duke", "queen"]:
 				used[s] = true
 				d.seat = s
 				break
@@ -430,7 +450,9 @@ func _make_horse(spec: Dictionary, owned: bool) -> Node3D:
 static func role_title(d) -> String:
 	var t := {"tavern_owner": "Innkeeper", "stablemaster": "Stablemaster", "shopkeeper": "Shopkeeper", "blacksmith": "Blacksmith", "merchant": "Merchant",
 		"farmer": "Farmer", "priest": "Priest", "official": "Official", "falconer": "Falconer", "knight": "Knight", "guard": "Guard", "servant": "Servant",
-		"cook": "Cook", "porter": "Porter", "explorer": "Explorer", "duke": "Duke", "bandit": "Bandit", "villager": "Villager"}
+		"cook": "Cook", "porter": "Porter", "explorer": "Explorer", "duke": "Duke", "queen": "Queen", "bandit": "Bandit", "villager": "Villager"}
+	if d.role == "duke" and d.sname == ROYAL_SEAT:
+		return "King"
 	return t.get(d.role, String(d.role).capitalize())
 
 
@@ -475,7 +497,7 @@ func activity_for(d: NPCData) -> Dictionary:
 			if not d.work.is_empty() and h > 8.0 and h < 17.0 and d.id % 2 == 0:
 				return _act_spot(d.work)
 			return _act_hub(d, slot / 2, "Sword_Idle", 1.3)
-		"duke":
+		"duke", "queen":
 			if night and not d.bed.is_empty():
 				return _act_spot(d.bed, "Sleep")
 			if not d.seat.is_empty() and ((h > 8.0 and h < 12.0) or (h > 14.0 and h < 19.0)):
@@ -590,7 +612,11 @@ func _process(delta: float) -> void:
 	if _tick > 0.0:
 		return
 	_tick = 0.5
-	var pp := pl.global_position
+	_refresh_queue(pl.global_position)
+
+
+## Who should be standing about near the player (queued, nearest built first); who has gone.
+func _refresh_queue(pp: Vector3) -> void:
 	_spawn_queue.clear()
 	for d in all:
 		if not d.alive and d.node == null:
@@ -627,6 +653,14 @@ func _spawn_next(pp: Vector3) -> void:
 	_spawn_queue.remove_at(best)
 	if d.node == null and d.alive and bd < SPAWN_R * SPAWN_R:
 		_spawn(d)
+
+
+## Everyone near the player, built at once (behind the loading screen).
+func spawn_nearby_now() -> void:
+	var pl: Node3D = Game.player_ref
+	if pl:
+		_refresh_queue(pl.global_position)
+		flush_spawns()
 
 
 ## Spawns everyone already queued (used by tests and teleports).

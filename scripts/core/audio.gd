@@ -2,8 +2,9 @@ extends Node
 ## Audio: recorded CC0 foley (Kenney: footsteps, blades, armour, shields, doors, coins, glass,
 ## interface) where available, layered for combat; everything else - animals, voices, weather and
 ## ambience beds - is modelled in audio_synth.gd (formant voices, granular rain and water, crackling
-## fire, birdsong) and the lute "minstrel" music is played live. Synthesised sounds are cached to
-## user:// after the first run; the browser build ships them pre-rendered in res://sounds/gen/.
+## fire, birdsong) and the lute "minstrel" music is played live. The synthesised sounds ship
+## pre-rendered and QOA-compressed in res://sounds/gen/ (tools: --render-sounds); anything missing
+## there is synthesised on the first run and cached to user://.
 
 const RATE := 22050
 const CACHE := "user://sfx_cache_v3/"
@@ -101,10 +102,12 @@ func _ready() -> void:
 			_render_all(a.substr(16))
 
 
-## Writes every synthesised sound (not the recorded ones) as WAV files, for the browser build to
-## ship instead of making them on the player's machine.
+## Writes every synthesised sound (not the recorded ones) as a QOA-compressed AudioStreamWAV
+## resource (a fifth of the WAV's size), so the game never has to make them on the player's machine.
+##   godot --headless --path . -- --render-sounds=res://sounds/gen
 func _render_all(dir: String) -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
+	var tmp := OS.get_cache_dir().path_join("kf_render.wav")
 	var defs := _defs()
 	var n := 0
 	for name in defs:
@@ -113,8 +116,14 @@ func _render_all(dir: String) -> void:
 		for v in int(defs[name][1]):
 			_rng.seed = hash(name) + v * 7919
 			var data: PackedFloat32Array = (defs[name][0] as Callable).call(v)
-			_to_wav(data, bool(defs[name][2])).save_to_wav(dir.path_join("%s_%d.wav" % [name, v]))
+			_to_wav(data, false).save_to_wav(tmp)
+			var opts := {"compress/mode": 2}
+			if bool(defs[name][2]):
+				opts.merge({"edit/loop_mode": 2, "edit/loop_begin": 0, "edit/loop_end": -1})
+			var q := AudioStreamWAV.load_from_file(tmp, opts)
+			ResourceSaver.save(q, dir.path_join("%s_%d.res" % [name, v]))
 			n += 1
+	DirAccess.remove_absolute(tmp)
 	print("RENDERED %d sounds" % n)
 	get_tree().quit()
 
@@ -136,15 +145,13 @@ func generate_all() -> void:
 			continue
 		for v in int(defs[name][1]):
 			var path := CACHE + "%s_%d.wav" % [name, v]
-			var pre := PRERENDERED + "%s_%d.wav" % [name, v]
+			var pre := PRERENDERED + "%s_%d.res" % [name, v]
 			var st: AudioStreamWAV = null
 			if FileAccess.file_exists(pre):
-				st = AudioStreamWAV.load_from_file(pre)
-				if st and bool(defs[name][2]):
-					st.loop_mode = AudioStreamWAV.LOOP_FORWARD
-					st.loop_end = st.data.size() / 2
-				arr.append(st)
-				continue
+				st = load(pre)
+				if st:
+					arr.append(st)
+					continue
 			if FileAccess.file_exists(path):
 				st = AudioStreamWAV.load_from_file(path)
 			if st == null:

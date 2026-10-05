@@ -62,7 +62,13 @@ void vertex() {
 void fragment() {
 	vec4 c = texture(albedo_tex, UV) * albedo_color;
 	if (use_alpha) {
-		ALPHA = c.a;
+		// mipmaps average the leaf cut-outs away at a distance: raise alpha with the mip level so
+		// far crowns stay as full as near ones
+		vec2 px = UV * vec2(textureSize(albedo_tex, 0));
+		vec2 dx = dFdx(px);
+		vec2 dy = dFdy(px);
+		float mip = max(0.5 * log2(max(dot(dx, dx), dot(dy, dy))), 0.0);
+		ALPHA = c.a * (1.0 + mip * 0.25);
 		ALPHA_SCISSOR_THRESHOLD = alpha_scissor;
 	}
 	vec3 base = hue_shift != 0.0 ? hue_rotate(c.rgb, hue_shift, sat_mul, val_mul) : c.rgb;

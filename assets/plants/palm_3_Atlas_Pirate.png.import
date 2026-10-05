@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://djah66g63u3uo"
-path="res://.godot/imported/palm_3_Atlas_Pirate.png-319d709b835ea4ab690efef9796c330d.ctex"
+path.s3tc="res://.godot/imported/palm_3_Atlas_Pirate.png-319d709b835ea4ab690efef9796c330d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "219f43be043845c1039f47f20d5b6de4"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/plants/palm_3_Atlas_Pirate.png"
-dest_files=["res://.godot/imported/palm_3_Atlas_Pirate.png-319d709b835ea4ab690efef9796c330d.ctex"]
+dest_files=["res://.godot/imported/palm_3_Atlas_Pirate.png-319d709b835ea4ab690efef9796c330d.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

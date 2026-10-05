@@ -113,8 +113,31 @@ func _open(new_mode: String, size: Vector2) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	panel.add_child(v)
+	if Game.mobile:
+		# no Esc key on a phone: a close button in the corner, and the menu shrunk to the screen
+		var x := Button.new()
+		x.text = "Close"
+		x.add_theme_font_size_override("font_size", 30)
+		UITheme.place(x, Control.PRESET_TOP_RIGHT, Vector2(-196, 14), Vector2(180, 74))
+		x.pressed.connect(func(): close())
+		add_child(x)
+		panel.resized.connect(_fit)
+		_fit.call_deferred()
 	Audio.ui("open")
 	return v
+
+
+## Phones: a menu laid out for a big screen is scaled down to fit, around its centre (only its
+## scale is touched, never its layout). Measured again when it resizes: wrapped text settles a
+## frame or two after the menu is built.
+func _fit() -> void:
+	if panel == null or not is_instance_valid(panel):
+		return
+	var need := panel.size.max(panel.get_combined_minimum_size())
+	var room := get_viewport_rect().size - Vector2(24, 190)      # (clear of the close button)
+	var k := minf(1.0, minf(room.x / need.x, room.y / need.y))
+	panel.pivot_offset = panel.size * 0.5
+	panel.scale = Vector2(k, k)
 
 
 func close(resume := true) -> void:
@@ -128,7 +151,7 @@ func close(resume := true) -> void:
 	if resume:
 		Game.in_menu = false
 		get_tree().paused = false
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if Game.world_ref else Input.MOUSE_MODE_VISIBLE
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if Game.world_ref and not Game.mobile else Input.MOUSE_MODE_VISIBLE
 		Audio.ui("close")
 
 
@@ -155,7 +178,7 @@ func open_pause() -> void:
 		var btn := UITheme.button(b[0], b[1], 380)
 		btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		v.add_child(btn)
-	var help := UITheme.label("WASD move · Shift sprint · Space jump · Ctrl crouch · E interact · LMB cut (hold: heavy blow) · RMB shield (just in time: parry)\nAlt or double-tap A/D/S dodge · R draw/sheathe · T torch · G gold coin · H call horse · Z wait · Tab inventory · J journal · M map\nRiding: W canter · Shift gallop · Ctrl walk · S rein in · 1 eat · 2 drink · 3 bandage · 4 campfire · F1 HUD · F5/F9 save/load", 16, Color(0.78, 0.7, 0.56))
+	var help := UITheme.label("Left thumb: move (push to the edge to run) · drag anywhere else to look\nStrike: tap to cut, hold for a heavy blow · Block: hold (just in time: parry) · Use: talk, open, pick up, ride\nRiding: push up to canter, to the edge to gallop, pull back to rein in · Use again to dismount", 17, Color(0.78, 0.7, 0.56)) if Game.mobile else UITheme.label("WASD move · Shift sprint · Space jump · Ctrl crouch · E interact · LMB cut (hold: heavy blow) · RMB shield (just in time: parry)\nAlt or double-tap A/D/S dodge · R draw/sheathe · T torch · G gold coin · H call horse · Z wait · Tab inventory · J journal · M map\nRiding: W canter · Shift gallop · Ctrl walk · S rein in · 1 eat · 2 drink · 3 bandage · 4 campfire · F1 HUD · F5/F9 save/load", 16, Color(0.78, 0.7, 0.56))
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(help)
@@ -227,7 +250,7 @@ func open_inventory() -> void:
 	_inv_detail.custom_minimum_size = Vector2(400, 0)
 	_inv_detail.add_theme_constant_override("separation", 8)
 	body.add_child(_inv_detail)
-	var hint := UITheme.label("Click to select  ·  double-click or E to use / equip  ·  right-click for quick use  ·  Q to drop  ·  Tab to close", 18, Color(0.78, 0.7, 0.56))
+	var hint := UITheme.label("Tap to select  ·  tap again to use / equip  ·  the buttons on the right drop or use" if Game.mobile else "Click to select  ·  double-click or E to use / equip  ·  right-click for quick use  ·  Q to drop  ·  Tab to close", 18, Color(0.78, 0.7, 0.56))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(hint)
 	if not Game.inventory.has(_inv_sel):
@@ -335,12 +358,15 @@ func _slot(id: String, count: int, px: int) -> Button:
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(dot)
 	b.pressed.connect(func():
+		if Game.mobile and _inv_sel == id:
+			_inv_use()          # (a phone: tap the chosen item again to use or equip it)
+			return
 		_inv_sel = id
 		Audio.ui("click")
 		_inv_restyle()
 		_inv_show(id))
 	b.gui_input.connect(func(ev):
-		if ev is InputEventMouseButton and ev.pressed:
+		if ev is InputEventMouseButton and ev.pressed and not Game.mobile:
 			if (ev.double_click and ev.button_index == MOUSE_BUTTON_LEFT) or ev.button_index == MOUSE_BUTTON_RIGHT:
 				_inv_sel = id
 				_inv_use())
@@ -592,7 +618,7 @@ func _inv_drop(all := false) -> void:
 # ------------------------------------------------------------------ map
 func open_map() -> void:
 	var v := _open("map", Vector2(1180, 940))
-	_title(v, "Map of Aldmere", "Wheel to zoom, drag to pan  ·  click to set a waypoint, right-click to clear it")
+	_title(v, "Map of Aldmere", "Drag to pan  ·  tap to set a waypoint" if Game.mobile else "Wheel to zoom, drag to pan  ·  click to set a waypoint, right-click to clear it")
 	var clip := Control.new()
 	clip.custom_minimum_size = Vector2(1140, 760)
 	clip.clip_contents = true
@@ -609,9 +635,25 @@ func open_map() -> void:
 	_map_zoom = 1.0
 	_map_off = Vector2.ZERO
 	_layout_map()
-	var close := UITheme.button("Close map  (M or Esc)", func(): close(), 300)
-	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(close)
+	if Game.mobile:
+		# no mouse wheel or right button on a phone: buttons instead
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 16)
+		row.add_child(UITheme.button("Zoom in", func():
+			_map_zoom = minf(_map_zoom * 1.4, 6.0)
+			_layout_map(), 200))
+		row.add_child(UITheme.button("Zoom out", func():
+			_map_zoom = maxf(_map_zoom / 1.4, 1.0)
+			_layout_map(), 200))
+		row.add_child(UITheme.button("Clear waypoint", func():
+			Game.waypoint = Vector2.INF
+			_layout_map(), 260))
+		v.add_child(row)
+	else:
+		var close := UITheme.button("Close map  (M or Esc)", func(): close(), 300)
+		close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(close)
 
 
 func _layout_map() -> void:

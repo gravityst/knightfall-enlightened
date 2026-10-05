@@ -23,7 +23,6 @@ var settlements: Array = []
 var pois: Array = []
 var roads: Array = []
 var height_tex: ImageTexture
-var height_img: Image          # the heights as an RF image (for fast collision patches)
 var normal_tex: ImageTexture
 var water_tex: ImageTexture
 var flow_tex: ImageTexture
@@ -57,6 +56,8 @@ func _path(file: String) -> String:
 
 func _decode(file: String, mips: bool) -> void:
 	var img := Image.load_from_file(_path(file))
+	if Game.mobile and file == "normal.png" and img.get_width() > 2048:
+		img.resize(img.get_width() / 2, img.get_height() / 2, Image.INTERPOLATE_BILINEAR)   # a phone's memory
 	if mips:
 		img.generate_mipmaps()
 	_mutex.lock()
@@ -71,6 +72,8 @@ func _decode_atlas(file: String) -> void:
 	var imgs: Array[Image] = []
 	for i in 13:
 		var sub := atlas.get_region(Rect2i((i % 4) * ts, (i / 4) * ts, ts, ts))
+		if Game.mobile and ts > 512:
+			sub.resize(512, 512, Image.INTERPOLATE_BILINEAR)      # a phone's memory
 		sub.generate_mipmaps()
 		imgs.append(sub)
 	_mutex.lock()
@@ -103,10 +106,19 @@ func load_all(progress: Callable) -> void:
 	prefetch()
 	progress.call(0.02, "Reading the lay of the land")
 	await get_tree().process_frame
-	var bytes := FileAccess.get_file_as_bytes(DIR + "height.bin")
+	var bytes: PackedByteArray
+	if FileAccess.file_exists(DIR + "height.webp"):
+		# the browser build: the float heights' own bytes stored as the pixels of a lossless WebP
+		# (rounded to 1.5 cm, so it packs to a seventh of the raw file)
+		var img := Image.load_from_file(DIR + "height.webp")
+		if img.get_format() != Image.FORMAT_RGBA8:
+			img.convert(Image.FORMAT_RGBA8)
+		bytes = img.get_data()
+	else:
+		bytes = FileAccess.get_file_as_bytes(DIR + "height.bin")
 	heights = bytes.to_float32_array()
-	height_img = Image.create_from_data(HM_RES, HM_RES, false, Image.FORMAT_RF, bytes)
-	height_tex = ImageTexture.create_from_image(height_img)
+	height_tex = ImageTexture.create_from_image(Image.create_from_data(HM_RES, HM_RES, false, Image.FORMAT_RF, bytes))
+	bytes = PackedByteArray()
 	progress.call(0.08, "Charting rivers and lakes")
 	await get_tree().process_frame
 	var wb := FileAccess.get_file_as_bytes(DIR + "water.bin")

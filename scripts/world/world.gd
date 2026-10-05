@@ -24,6 +24,8 @@ var _player_horse: Node3D
 
 func _ready() -> void:
 	Game.world_ref = self
+	if Game.mobile:
+		FireFX.lod_range = 32.0
 	loading = preload("res://scripts/ui/loading_screen.gd").new()
 	add_child(loading)
 	_load()
@@ -32,7 +34,7 @@ func _ready() -> void:
 var _t_last := 0
 func _progress(v: float, text: String) -> void:
 	var now := Time.get_ticks_msec()
-	if OS.get_cmdline_user_args().has("--timing"):
+	if Game.debug_flag("timing"):          # --timing, or ?timing on the page
 		print("LOAD %5d ms  (+%d)  %s" % [now, now - _t_last, text])
 	_t_last = now
 	loading.call("set_progress", v, text)
@@ -114,6 +116,8 @@ func _load() -> void:
 		atmosphere.set_weather("clear", true)
 	hud = preload("res://scripts/ui/hud.gd").new()
 	add_child(hud)
+	if Game.mobile:
+		add_child(preload("res://scripts/ui/touch_controls.gd").new())
 	if Game.perf_overlay or Game.tour:
 		add_child(preload("res://scripts/ui/perf_overlay.gd").new())
 	terrain.update_view(player.cam.global_position, true)
@@ -127,10 +131,20 @@ func _load() -> void:
 		add_child(load("res://tools/probe5.gd").new())
 	if "--perf" in OS.get_cmdline_user_args():
 		add_child(load("res://tools/perf.gd").new())
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--probe-castle"):
+			add_child(load("res://tools/probe_castle.gd").new())
 	if Assets.compat and not Game.debug_flag("nowarm"):
 		_progress(0.985, "Lighting the lamps")
 		await _warm_shaders()
-	for i in 8:
+	# the world's first moments - townsfolk and beasts appearing, lamps and fires lighting, the
+	# first sight of everything - happen behind the loading screen, so play starts smooth
+	_progress(0.995, "Opening the gates")
+	if npcs and Assets.compat:
+		npcs.call("spawn_nearby_now")      # (the desktop streams them in a frame apart, unnoticed)
+	if wildlife:
+		wildlife.call("fill_now")
+	for i in (36 if Assets.compat else 12):
 		await get_tree().process_frame
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if Game.settings.vsync else DisplayServer.VSYNC_DISABLED)
 	loading.call("finish")
@@ -151,7 +165,7 @@ func _load() -> void:
 			get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 			return
 		get_tree().quit()
-	if _shots.is_empty():
+	if _shots.is_empty() and not Game.mobile:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Audio.start_ambience()
 
@@ -743,6 +757,8 @@ func _shot_ui(which: String) -> void:
 
 
 func _run_shots() -> void:
+	if not ready_to_play:
+		return          # (the browser renderer's warm-up runs behind the loading screen first)
 	player.rotation.y = player._yaw
 	player.head.rotation.x = player._pitch
 	_shot_frames -= 1

@@ -5,7 +5,7 @@ static var _flame_mat: StandardMaterial3D
 static var _smoke_mat: StandardMaterial3D
 ## Fires and smoke further than this from the player stop emitting and aren't processed or drawn:
 ## a town has hundreds, and on the browser's renderer each one costs a pass every frame.
-static var lod_range: float = 45.0 if Assets.compat else 150.0
+static var lod_range: float = 45.0 if Assets.compat else 150.0     # (32 on a phone: world.gd)
 
 
 static func flames(radius: float, height: float) -> Node3D:
@@ -75,7 +75,8 @@ static func flames(radius: float, height: float) -> Node3D:
 ## On the Compatibility renderer GPU particles run a transform-feedback pass each; CPU
 ## particles (simulated in C++, drawn as one multimesh) are far cheaper there.
 static func _for_renderer(p: GPUParticles3D) -> GeometryInstance3D:
-	if not Assets.compat or Game.debug_flag("gpufx"):
+	var g := Assets.game()
+	if not Assets.compat or (g and g.debug_flag("gpufx")):
 		return p
 	var c := CPUParticles3D.new()
 	c.convert_from_particles(p)
@@ -101,7 +102,8 @@ class Lod extends Node:
 			return
 		_t = 0.5
 		var me := get_parent() as Node3D
-		var pl: Node3D = Game.player_ref
+		var g := Assets.game()
+		var pl: Node3D = g.player_ref if g else null
 		if me == null or not me.is_inside_tree():
 			return
 		var near := pl == null or me.global_position.distance_squared_to(pl.global_position) < FireFX.lod_range * FireFX.lod_range
@@ -111,7 +113,9 @@ class Lod extends Node:
 	func _apply(on: bool) -> void:
 		_on = on
 		if on:
-			Game.mark("fires lit")
+			var g := Assets.game()
+			if g:
+				g.mark("fires lit")
 		for c in get_parent().get_children():
 			if c is GPUParticles3D or c is CPUParticles3D:
 				c.set("emitting", on)
@@ -236,7 +240,9 @@ static func burst(parent: Node, pos: Vector3, kind: String, dir := Vector3.UP) -
 	p.draw_pass_1 = q
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.visibility_aabb = AABB(Vector3(-3, -3, -3), Vector3(6, 6, 6))
-	parent.add_child(p)
-	p.global_position = pos
-	p.emitting = true
-	p.get_tree().create_timer(p.lifetime + 0.6).timeout.connect(p.queue_free)
+	var life := p.lifetime
+	var n := _for_renderer(p)          # (CPU particles on WebGL: no transform-feedback pass)
+	parent.add_child(n)
+	n.global_position = pos
+	n.set("emitting", true)
+	n.get_tree().create_timer(life + 0.6).timeout.connect(n.queue_free)

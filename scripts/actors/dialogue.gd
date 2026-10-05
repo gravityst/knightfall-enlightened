@@ -61,7 +61,11 @@ static func greeting(d) -> String:
 	if d.met and randf() < 0.5:
 		g = ["Back again?", "Ah, it's you.", "Hello again."][randi() % 3] + " " + g
 	if d.role == "duke":
+		if d.sname == NPCManager.ROYAL_SEAT:
+			return "You stand before %s, King of Aldmere. %s" % [d.name, "Kneel, and speak your business." if d.personality == "stern" else "Rise, traveller - my hall is open to all who keep the peace."]
 		return "You stand before %s. %s" % [d.name, "Speak, and be swift." if d.personality == "stern" else "Welcome to my hall, traveller."]
+	if d.role == "queen":
+		return "%s inclines her head. %s" % [d.name, "\"Mind your manners at court.\"" if d.personality == "stern" else "\"Be welcome at Ravenmoor. The King is generous to those who serve the realm.\""]
 	return g
 
 
@@ -123,8 +127,12 @@ static func jail_days(sname: String) -> int:
 static func intro(d) -> String:
 	var title := NPCManager.role_title(d).to_lower()
 	match d.role:
-		"duke": return "I am %s, lord of these lands and all who dwell within its walls." % d.name
-		"official": return "%s, steward to the duke. I keep the ledgers and, unlike some, my boots clean." % d.name
+		"duke":
+			if d.sname == NPCManager.ROYAL_SEAT:
+				return "I am %s, King of Aldmere. Every duke on this island holds his castle of my crown, and every road is under my peace." % d.name
+			return "I am %s, lord of these lands and all who dwell within its walls." % d.name
+		"queen": return "I am %s, Queen of Aldmere. I see to the court and the realm's charity - and I hear more than the King's ministers think." % d.name
+		"official": return "%s, steward to the %s. I keep the ledgers and, unlike some, my boots clean." % [d.name, "king" if d.sname == NPCManager.ROYAL_SEAT else "duke"]
 		"knight": return "%s, knight of %s. My oath is to protect these people - and I keep it." % [d.name, d.sname]
 		"falconer": return "I'm %s, the castle falconer. This beauty is Swift - the finest hunter in Aldmere." % d.name
 		"cook": return "Bon Appetite!"
@@ -318,7 +326,7 @@ static func respond(npc, topic: String) -> Dictionary:
 			if Game.reputation >= 50.0 and not Game.has_meta("knighted"):
 				Game.set_meta("knighted", true)
 				Game.earn(100 * Items.SILVER_PER_GOLD)
-				Game.change_reputation(10.0, "Honoured by the duke")
+				Game.change_reputation(10.0, "Honoured by the king" if d.sname == NPCManager.ROYAL_SEAT else "Honoured by the duke")
 				return {"text": "Your deeds have reached my ears. Kneel... Rise, Knight of Aldmere. Take this purse of a hundred gold, with my thanks."}
 			if Game.reputation < 0.0:
 				return {"text": "You dare seek audience with that reputation? Guards, watch this one."}

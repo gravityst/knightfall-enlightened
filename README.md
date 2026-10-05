@@ -4,7 +4,7 @@ An open-world, first-person medieval survival game for **Godot 4.7** (Forward+ r
 
 ## Play
 
-**In your browser:** <https://gravityst.github.io/knightfall-enlightened/>. Best in Chrome or Edge on a computer with a mouse and keyboard. The first visit downloads about 225 MB, which the browser keeps for next time. The browser version runs on WebGL 2, so it uses lighter graphics than the desktop build: no global illumination, screen-space reflections or volumetric fog, shorter draw distance and less grass. Quick save and load are also on K and L there.
+**In your browser:** <https://gravityst.github.io/knightfall-enlightened/>. Best in Chrome or Edge on a computer with a mouse and keyboard; phones and tablets get touch controls (hold the device sideways). The first visit downloads about 100 MB; the page keeps it in the browser's storage, so later visits start without downloading anything, and a new version only fetches the files that changed. The browser version runs on WebGL 2, so it uses lighter graphics than the desktop build: no global illumination, screen-space reflections or volumetric fog, shorter draw distance and less grass. Quick save and load are also on K and L there.
 
 **On the desktop:** open `project.godot` in Godot 4.7 and press Play.
 
@@ -31,13 +31,15 @@ The very first launch imports the models and textures (about two minutes) and co
 | F5 / F9 | Quick save / quick load |
 | F1 · F2 | Hide HUD · screenshot (saved to Pictures/Knightfall) |
 
+**On a phone or tablet** (or add `?mobile` to the page address): the left thumb moves (a stick appears where you touch; push it to the edge to run, or gallop on horseback), and a drag anywhere else looks around. The buttons on the right strike (tap to cut, hold for a heavy blow), block (hold; just in time to parry), jump, use, dodge, draw the sword, light a torch and crouch; along the top are the menu, bag, map and tasks, and down the left eat, drink, heal and call your horse. Every menu has a Close button, tap a chosen item again to use or equip it, and the map has zoom buttons. The interface is drawn larger, and the game uses lighter graphics settings.
+
 ## The island of Aldmere
 
 An island on a 6 x 6 km map with snowy mountains, frozen tundra, deep forests, open plains, the Qadir desert, rivers, lakes (Mirrormere has a ruined keep on its island) and coastline.
 
 - **3 towns** (Kingsbridge, Frosthold, Sandmere) with seven knights each and twice-weekly market days, when visiting traders bring rare wares.
 - **8 villages**, each guarded by two knights, with taverns, smithies, stables, chapels, shops and farms.
-- **3 castles** with a full court ranked from the duke down: officials (snobs), knights (honourable), one falconer, guards who patrol the wall-walks (and won't talk), cooks ("Bon Appetite!") and servants (who only respond to a gold coin). The guards lower the portcullis on anyone with a bad reputation and raise it again the next day.
+- **3 castles**, each behind a curtain wall with round towers under slate cones, a gatehouse and a portcullis, around a great stone keep with corner turrets. Inside the keep a high hall of pillars and banners leads up a carpet to the throne. The **King of Aldmere** and his **Queen** hold court at Castle Ravenmoor; dukes rule Wintermere and Sunspire. Each castle has a full court ranked from the ruler down: officials (snobs), knights (honourable), one falconer, guards who patrol the wall-walks (and won't talk), cooks ("Bon Appetite!") and servants (who only respond to a gold coin). The guards lower the portcullis on anyone with a bad reputation and raise it again the next day.
 - **3 ruined castles** and 12 landmarks: watchtowers, ruined towers, a stone circle, bandit camps, a shrine, an old mine, a hunter's lodge, a woodcutter camp and a desert well.
 - Every building has a real interior: beds, chests, hearths and upstairs floors.
 - **The wilds:** about 90 smaller places lie between the settlements: hunters' camps, wagons wrecked by the road, standing stones, beasts' dens (with their wolves or bear at home), ruined houses, old barrows and wayside shrines with stone saints. Each has something to find (a chest, or a blessing that heals you) and is named on discovery.
@@ -130,20 +132,22 @@ To regenerate the island: `cd godot/tools/worldgen && python3 bake_world.py && p
 ### Building the browser version
 
 `tools/web/build_web.sh` builds the browser version into `docs/`, which GitHub Pages publishes. It works on a copy of the project, so the desktop project is never changed:
-- colour textures are capped at 1024 px and normal / roughness maps at 512 px;
-- the island's big maps are re-encoded as WebP;
-- `world/` and `sounds/` are packed into `data1.pck` / `data2.pck`, each under GitHub's 100 MB file limit;
-- the game is exported single-threaded for WebGL 2 using the Web preset.
+- colour textures are capped at 1024 px and normal / roughness maps at 512 px; the game is exported twice, with the desktop's S3TC textures and with ETC2 for phones (the page picks one by what the graphics chip can read);
+- the island's heights are stored losslessly as a WebP (the float values' own bytes, rounded to 1.5 cm: 64 MB becomes 6.5), the other big maps as lossy WebP;
+- `world/` and `sounds/` go into a data pack (`data1-<hash>.pck`, under GitHub's 100 MB file limit);
+- every big file is named by its content (`tools/web/finalize.py`), and `tools/web/sw.js`, a service worker, keeps them in the browser's storage: a repeat visit downloads nothing, and a new version only the files that changed;
+- the game is exported single-threaded for WebGL 2.
 
-On the page, `scripts/core/web_data.gd` fetches the data packs into memory (the browser's own download cache keeps them for later visits) and mounts them before play. The synthesised sounds are rendered at build time (`-- --render-sounds=<dir>`) and shipped in the packs, so the browser never has to make them.
+On the page, `scripts/core/web_data.gd` fetches the data pack and mounts it before play. The synthesised sounds are rendered once (`-- --render-sounds=res://sounds/gen`) as QOA-compressed resources that both the desktop and browser builds load, so no machine ever has to make them.
 
 Browser-specific optimisations:
-- Fires and smoke switch off beyond 45 m and use CPU particles.
+- Fires, smoke, sparks and blood use CPU particles (WebGL runs GPU particles through a slow transform-feedback pass), and fires switch off beyond 45 m.
 - Small kit pieces drop out of view sooner.
 - Ambient light comes from a colour rather than the sky's light probe.
 - There are fewer townsfolk and animals at once, and distant ones animate at 8 Hz.
 - No lamp or character shadows.
-- Every material is drawn once behind the loading screen, so shaders compile there instead of freezing the game.
+- Every material is drawn once behind the loading screen, so shaders compile there instead of freezing the game; the townsfolk and wildlife around you appear behind it too.
+- Phones (`Game.mobile`) draw the 3D at about 480 lines while the interface stays sharp, keep fewer people and animals about, a nearer horizon, half-size terrain textures and shorter shadows.
 
 Add `?perf` to the page address for a frame-time overlay that logs each hitch and what caused it; add `?tour` to walk a set route, and `?autostart` to skip the title screen. On the Compatibility renderer, characters and animals get their own materials (`Assets.instanced_shader`), because WebGL's per-instance shader buffer is far too small for a town.
 

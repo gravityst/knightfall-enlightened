@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ca84guopcygwl"
-path="res://.godot/imported/Pig_Atlas.png-46b2b876531d08abefad366048dea39b.ctex"
+path.s3tc="res://.godot/imported/Pig_Atlas.png-46b2b876531d08abefad366048dea39b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "dac414321d33da82b685f85877ee23ee"
@@ -14,17 +15,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/animals/Pig_Atlas.png"
-dest_files=["res://.godot/imported/Pig_Atlas.png-46b2b876531d08abefad366048dea39b.ctex"]
+dest_files=["res://.godot/imported/Pig_Atlas.png-46b2b876531d08abefad366048dea39b.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

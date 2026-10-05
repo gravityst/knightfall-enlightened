@@ -354,7 +354,7 @@ static func _light(r: Builder.Result, lp: Vector3, energy: float, rng: float, sh
 	l.light_color = Color(1.0, 0.72, 0.42)
 	l.light_energy = energy
 	l.omni_range = rng
-	l.shadow_enabled = shadow
+	l.shadow_enabled = shadow and not Assets.compat
 	l.position = lp
 	r.root.add_child(l)
 	r.lights.append(l)

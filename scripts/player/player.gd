@@ -68,6 +68,11 @@ var _slide_t := 0.0              # lunges, dodges and knock-backs carry momentum
 var _swing_roll := 0.0
 var _land_dip := 0.0
 var _taps := {}
+var _eye_y := EYE                # eye height (crouching, the dip on landing), eased every frame
+var _tick_from := Vector3.INF    # the body's position at the last two physics ticks: the view is
+var _tick_to := Vector3.INF      # drawn between them, so it glides at any frame rate
+var _jump_buf := 0.0             # a jump pressed a moment before landing still happens
+var _air_t := 0.0                # time off the ground (a jump just after stepping off an edge counts)
 
 
 func _ready() -> void:
@@ -146,49 +151,6 @@ func _build_fp_arms() -> void:
 	var hb := _fp.skeleton.find_bone("Head")
 	var eye := _fp.skeleton.get_bone_global_rest(hb).origin + Vector3(0, 0.08, 0.1)
 	_fp.transform = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO) * Transform3D(Basis(), -eye + FP_OFFSET)
-
-
-func _make_flame() -> GPUParticles3D:
-	var p := GPUParticles3D.new()
-	p.amount = 40
-	p.lifetime = 0.5
-	p.local_coords = false
-	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	pm.emission_sphere_radius = 0.05
-	pm.direction = Vector3.UP
-	pm.spread = 12.0
-	pm.initial_velocity_min = 0.4
-	pm.initial_velocity_max = 0.9
-	pm.gravity = Vector3(0, 0.6, 0)
-	pm.scale_min = 0.6
-	pm.scale_max = 1.2
-	var curve := CurveTexture.new()
-	var c := Curve.new()
-	c.add_point(Vector2(0, 1))
-	c.add_point(Vector2(1, 0))
-	curve.curve = c
-	pm.scale_curve = curve
-	var grad := GradientTexture1D.new()
-	var g := Gradient.new()
-	g.set_color(0, Color(1.0, 0.85, 0.4, 1.0))
-	g.set_color(1, Color(0.9, 0.2, 0.05, 0.0))
-	grad.gradient = g
-	pm.color_ramp = grad
-	p.process_material = pm
-	var q := QuadMesh.new()
-	q.size = Vector2(0.12, 0.12)
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	m.vertex_color_use_as_albedo = true
-	m.albedo_color = Color(1.4, 1.0, 0.6)
-	q.material = m
-	p.draw_pass_1 = q
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return p
 
 
 func _refresh_view_model() -> void:
@@ -282,6 +244,8 @@ func holding_coin() -> bool:
 func _unhandled_input(event: InputEvent) -> void:
 	if controls_locked or Game.in_menu or dead:
 		return
+	if Game.mobile and (event is InputEventMouseButton or event is InputEventMouseMotion):
+		return          # a phone turns touches into mouse clicks too; the touch controls act instead
 	if event is InputEventKey and event.pressed and not event.echo:
 		for a in ["move_left", "move_right", "move_back"]:
 			if event.is_action(a):      # double-tap a direction to dodge that way
@@ -296,9 +260,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= event.relative.x * s
 		_pitch -= event.relative.y * s * (-1.0 if Game.settings.invert_y else 1.0)
 		_pitch = clampf(_pitch, -1.5, 1.5)
+		rotation.y = _yaw                 # turn at once, not on the next physics tick
+		head.rotation.x = _pitch
 	elif event.is_action_pressed("interact"):
 		_do_interact()
-	elif event.is_action_pressed("attack") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	elif event.is_action_pressed("attack") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.mobile):
 		_press_attack()
 	elif event.is_action_released("attack"):
 		_release_attack()
@@ -388,10 +354,27 @@ func _physics_process(delta: float) -> void:
 		_ride(delta)
 	else:
 		_move(delta)
-	_update_camera_fx(delta)
 	_update_focus()
 	_combat(delta)
 	_needs(delta)
+	# (a jump - a respawn, a rescue from under the ground - is not glided across)
+	_tick_from = _tick_to if _tick_to.distance_squared_to(global_position) < 25.0 else global_position
+	_tick_to = global_position
+
+
+## Every drawn frame: the latest mouse look and the camera's motion, with the view placed between
+## the last two physics ticks, so turning and moving stay smooth on a 120 Hz (or any) screen.
+func _process(delta: float) -> void:
+	if dead:
+		return
+	rotation.y = _yaw
+	head.rotation.x = _pitch
+	_update_camera_fx(delta)
+	if _tick_to.distance_squared_to(global_position) > 0.0001:
+		_tick_from = global_position          # moved outside the physics step: no glide
+		_tick_to = global_position
+	var lag := _tick_from.lerp(_tick_to, Engine.get_physics_interpolation_fraction()) - global_position
+	head.position = Vector3(0, _eye_y, 0) + global_basis.inverse() * lag
 
 
 func _move(delta: float) -> void:
@@ -434,12 +417,17 @@ func _move(delta: float) -> void:
 			speed *= 0.65
 		if _blocking:
 			speed *= 0.55
-		var acc := 10.0 if is_on_floor() else 2.5
+		# quick to start and quicker to stop on the ground; little steering in the air
+		var acc := (11.0 if wish.length_squared() > 0.01 else 15.0) if is_on_floor() else 2.5
 		if _slide_t > 0.0:
 			acc = 1.3          # carried by a lunge, dodge or knock-back
 		var hv := Vector3(velocity.x, 0, velocity.z).lerp(wish * speed, 1.0 - exp(-delta * acc))
 		velocity.x = hv.x
 		velocity.z = hv.z
+		if Input.is_action_just_pressed("jump") and not controls_locked and not Game.in_menu:
+			_jump_buf = 0.15
+		_jump_buf = maxf(_jump_buf - delta, 0.0)
+		_air_t = 0.0 if is_on_floor() else _air_t + delta
 		if is_on_floor():
 			if _fall_speed < -3.0:
 				_land_dip = clampf(-_fall_speed * 0.011, 0.02, 0.16)
@@ -447,12 +435,14 @@ func _move(delta: float) -> void:
 				var dmg := (absf(_fall_speed) - 13.0) * 7.0
 				take_damage(dmg, null, true)
 			_fall_speed = 0.0
-			if Input.is_action_just_pressed("jump") and not controls_locked and not Game.in_menu and stamina > 5.0:
-				velocity.y = JUMP
-				Game.change_stat("stamina", -6.0)
 		else:
 			velocity.y -= GRAVITY * delta
 			_fall_speed = minf(_fall_speed, velocity.y)
+		if _jump_buf > 0.0 and _air_t < 0.12 and velocity.y <= 0.1 and stamina > 5.0:
+			velocity.y = JUMP
+			_jump_buf = 0.0
+			_air_t = 1.0
+			Game.change_stat("stamina", -6.0)
 		if is_on_floor() and hv.length() > 0.5:
 			_step_acc += hv.length() * delta
 			if _step_acc > (2.2 if sprinting else 1.6):
@@ -562,7 +552,7 @@ func _update_camera_fx(delta: float) -> void:
 	if mounted:
 		eye = 0.0
 	_land_dip = lerpf(_land_dip, 0.0, 1.0 - exp(-delta * 7.0))
-	head.position.y = lerpf(head.position.y, eye - _land_dip, 1.0 - exp(-delta * 14.0))
+	_eye_y = lerpf(_eye_y, eye - _land_dip, 1.0 - exp(-delta * 14.0))
 	var ride := {}
 	if mounted:
 		ride = mounted.call("rider_motion")
@@ -835,7 +825,7 @@ func _combat(delta: float) -> void:
 		_queued = 0
 		_swing(p)
 	_blocking = weapon_drawn and Input.is_action_pressed("block") and Game.equipped.shield != "" and not torch_on and not mounted and not Game.in_menu \
-		and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _guard_break <= 0.0
+		and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.mobile) and _guard_break <= 0.0
 
 
 func take_damage(amount: float, source: Node, fall := false, _knock := 0.0) -> void:
@@ -1022,6 +1012,17 @@ func set_save_state(d: Dictionary) -> void:
 	global_position = Vector3(float(d.x), float(d.y), float(d.z))
 	_yaw = float(d.get("yaw", 0.0))
 	_pitch = float(d.get("pitch", 0.0))
+
+
+## Touch look (a drag across the right of the screen), in interface pixels.
+func add_look(rel: Vector2) -> void:
+	if controls_locked or Game.in_menu or dead:
+		return
+	var s := float(Game.settings.mouse_sensitivity)
+	_yaw -= rel.x * s
+	_pitch = clampf(_pitch - rel.y * s * (-1.0 if Game.settings.invert_y else 1.0), -1.5, 1.5)
+	rotation.y = _yaw
+	head.rotation.x = _pitch
 
 
 func set_look(yaw: float, pitch: float) -> void:

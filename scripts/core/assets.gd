@@ -143,9 +143,17 @@ static func _manifest_lines() -> PackedStringArray:
 	return PackedStringArray()
 
 
+## The Game autoload, looked up at run time: tools run with -s (no autoloads) use this script too.
+static func game() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("Game") if tree and tree.root else null
+
+
 static func scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
-		Game.mark("load " + path.get_file())
+		var g := game()
+		if g:
+			g.mark("load " + path.get_file())
 		var res: PackedScene = null
 		if _pending.has(path):
 			_pending.erase(path)

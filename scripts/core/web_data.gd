@@ -1,7 +1,7 @@
 extends Node
-## Browser builds only: fetches the island's data packs from beside the page (or finds them in
-## the browser's storage from an earlier visit) and mounts them, so res://world/ and
-## res://sounds/ exist. On the desktop it finishes at once.
+## Browser builds only: fetches the island's data packs from beside the page and mounts them, so
+## res://world/ and res://sounds/ exist. The page's service worker (tools/web/sw.js) keeps them,
+## so a repeat visit gets them from the browser's storage at once. On the desktop it finishes at once.
 
 signal progress(frac: float, text: String)
 signal finished(ok: bool)
@@ -21,8 +21,8 @@ func start() -> void:
 		mounted = true
 		finished.emit.call_deferred(true)
 		return
-	# kept in memory, not the browser's storage (syncing 100 MB there froze the page); repeat
-	# visits come from the browser's own download cache
+	# mounted from memory: Godot's own user:// storage would sync 100 MB to IndexedDB and freeze
+	# the page (the service worker keeps the downloads instead)
 	_dir = "/tmp/knightfall_%s/" % INFO.BUILD
 	DirAccess.make_dir_recursive_absolute(_dir)
 	_clear_old()
@@ -30,7 +30,7 @@ func start() -> void:
 		_total += float(p.size)
 		_queue.append(p)
 	_http = HTTPRequest.new()
-	_http.download_chunk_size = 1 << 20
+	_http.download_chunk_size = 1 << 23       # (read per frame: big, so a slow frame rate can't throttle it)
 	_http.accept_gzip = false       # the browser already unzips what GitHub Pages compresses
 	_http.request_completed.connect(_on_done)
 	add_child(_http)
@@ -45,7 +45,7 @@ func _next() -> void:
 			_mount(path)          # kept from an earlier visit
 			continue
 		var base := str(JavaScriptBridge.eval("window.location.href.split('?')[0].split('#')[0].replace(/[^/]*$/, '')"))
-		var err := _http.request(base + String(_current.file) + "?v=" + INFO.BUILD)
+		var err := _http.request(base + String(_current.file))
 		if err != OK:
 			finished.emit(false)
 		return
@@ -62,12 +62,11 @@ func _process(_d: float) -> void:
 
 func _on_done(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 	var path: String = _dir + String(_current.file)
-	print("WEB pack %s: result %d, http %d, %d of %d bytes" % [_current.file, result, code, body.size(), int(_current.size)])
+	print("WEB pack %s: result %d, http %d, %d of %d bytes at %d ms" % [_current.file, result, code, body.size(), int(_current.size), Time.get_ticks_msec()])
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200 or body.size() != int(_current.size):
 		push_warning("Pack download failed: %s (%d, %d, %d bytes)" % [_current.file, result, code, body.size()])
 		finished.emit(false)
 		return
-	# kept in the browser's storage, so the next visit skips the download
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:          # (no folder for this build: fall back to the top of the user folder)
 		print("WEB cannot write %s (%s); using user://" % [path, error_string(FileAccess.get_open_error())])
@@ -84,7 +83,7 @@ func _mount(path: String) -> void:
 	if not ProjectSettings.load_resource_pack(path):
 		push_warning("Could not mount " + path)
 	else:
-		print("WEB mounted ", path)
+		print("WEB mounted %s at %d ms" % [path, Time.get_ticks_msec()])
 	_done += float(_current.size)
 	progress.emit(_done / maxf(_total, 1.0), "Fetching the island")
 
@@ -97,6 +96,8 @@ func _size(path: String) -> int:
 ## Packs from older builds (saved by earlier versions) are dropped so the browser's storage
 ## doesn't fill up.
 func _clear_old() -> void:
+	if not DirAccess.dir_exists_absolute("user://packs/"):
+		return
 	for d in DirAccess.get_directories_at("user://packs/"):
 		if d != INFO.BUILD:
 			for f in DirAccess.get_files_at("user://packs/" + d):

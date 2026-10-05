@@ -106,8 +106,10 @@ func _ready() -> void:
 	_menus = load("res://scripts/ui/menus.gd").new()
 	add_child(_menus)
 	var tw := create_tween()
-	tw.tween_interval(0.25)
-	tw.tween_property(_fade, "color:a", 0.0, 1.6)
+	tw.tween_interval(0.1)
+	tw.tween_property(_fade, "color:a", 0.0, 0.9)
+	if Game.debug_flag("timing"):
+		print("LOAD %5d ms  title screen" % Time.get_ticks_msec())
 	if OS.has_feature("web"):
 		_fetch_data()        # (no background warm-up: a single-threaded page would stall on it)
 	else:
@@ -270,7 +272,7 @@ func _build_stage() -> void:
 		if hap.has_animation("Eating"):
 			hap.get_animation("Eating").loop_mode = Animation.LOOP_LINEAR
 			hap.play("Eating")
-	_stage.add_child(_fireflies())
+	_stage.add_child(FireFX._for_renderer(_fireflies()))     # (CPU particles on WebGL)
 	_cam = Camera3D.new()
 	_cam.fov = 48.0
 	_cam.far = 400.0
@@ -550,7 +552,7 @@ func _go(then: Callable) -> void:
 		return
 	_busy = true
 	var tw := create_tween()
-	tw.tween_property(_fade, "color:a", 1.0, 0.55)
+	tw.tween_property(_fade, "color:a", 1.0, 0.35)
 	tw.tween_callback(then)
 
 

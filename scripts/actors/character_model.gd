@@ -309,6 +309,7 @@ func _shader_mat(src: BaseMaterial3D, body_mask: bool) -> ShaderMaterial:
 	var n := src.resource_name
 	sm.set_shader_parameter("is_skin", "Regular" in n or "Superhero" in n or "Eye" in n)
 	sm.set_shader_parameter("is_hair", "Hair" in n)
+	sm.set_shader_parameter("is_eye", "Eye" in n)
 	if body_mask:
 		sm.set_shader_parameter("mask_body", true)
 	_mats[key] = sm

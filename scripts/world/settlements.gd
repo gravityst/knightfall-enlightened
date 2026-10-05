@@ -4,6 +4,7 @@ extends Node3D
 
 const V := "res://assets/village/"
 const P := "res://assets/props/"
+const GREAT_KEEP := preload("res://scripts/world/great_keep.gd")
 const FORT := "res://assets/castle/modular_fort_01/modular_fort_01.gltf"
 const GATE := "res://assets/castle/large_iron_gate/large_iron_gate.gltf"
 const H := 29.12
@@ -57,15 +58,27 @@ func _build_settlement(s: Dictionary) -> Dictionary:
 	var ruined := kind in ["ruin", "ruin_keep"]
 	var style: String = info.climate
 	var ext := Builder.Instancer.new()
-	ext.remap = Builder.style_remap("ruin" if ruined else style).duplicate()
-	ext.style_key = "ruin" if ruined else style
+	var look := "ruin" if ruined else (style + "+castle" if kind == "castle" else style)
+	ext.remap = Builder.style_remap(look).duplicate()
+	ext.style_key = look
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(String(s.name))
 	var cy := float(s.y)
 	# interiors are GPU-instanced per 64 m district: far cheaper to build than merged meshes
 	var inns := {}
 	# --- buildings
-	for b in s.get("buildings", []):
+	for b0 in s.get("buildings", []):
+		var b: Dictionary = b0
+		var great: bool = kind == "castle" and b.type == "keep"
+		if great:
+			# the great keep: at the back of the courtyard, facing the gate
+			b = b0.duplicate()
+			var kp := Transform3D(Basis(Vector3.UP, float(s.yaw)), Vector3(float(s.x), 0, float(s.z))) * Vector3(0, 0, -9.0)
+			b.x = kp.x
+			b.z = kp.z
+			b.yaw = float(s.yaw)
+			b.w = int(GREAT_KEEP.W)
+			b.d = int(GREAT_KEEP.D)
 		var by := _footprint_height(b)
 		if kind in ["castle", "ruin"]:
 			by = maxf(by, cy)
@@ -75,7 +88,11 @@ func _build_settlement(s: Dictionary) -> Dictionary:
 			ii.remap = ext.remap
 			ii.style_key = ext.style_key
 			inns[ck] = ii
-		var r := Builder.build_building(b, style, by + 0.1, ext, s.name, rng, inns[ck])
+		var r: Builder.Result
+		if great:
+			r = GREAT_KEEP.build(b, by + 0.1, ext, s.name, rng, inns[ck], String(s.name) == NPCManager.ROYAL_SEAT)
+		else:
+			r = Builder.build_building(b, style, by + 0.1, ext, s.name, rng, inns[ck])
 		node.add_child(r.root)
 		for l in r.lights:
 			lights.append(l)
@@ -621,6 +638,52 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 		for k in 4:
 			var cp: Vector3 = corners[k] * ((H + 2.1) / H)
 			ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(Vector3.UP, atan2(cp.x, cp.z)), cp * 1.0 + cp.normalized() * 7.8 + Vector3(0, 11.0, 0)))
+		_castle_crowns(info, base, body, ext)
+
+
+## The silhouette across the plain: slate cones and flags on the corner towers, and a gatehouse -
+## two round towers flanking the gate, battlemented and capped the same way.
+func _castle_crowns(info: Dictionary, base: Transform3D, body: StaticBody3D, ext) -> void:
+	var K = GREAT_KEEP
+	var kit = K.Kit.new()
+	var royal := String(info.name) == NPCManager.ROYAL_SEAT
+	var cols := [Color(0.62, 0.05, 0.07), Color(0.86, 0.66, 0.2)] if royal else [Color(0.12, 0.2, 0.5), Color(0.62, 0.05, 0.07)]
+	var node: Node3D = info.node
+	var flags := []
+	var corners := [Vector3(-H, 0, -H), Vector3(H, 0, -H), Vector3(H, 0, H), Vector3(-H, 0, H)]
+	for i in 4:
+		var cp: Vector3 = corners[i] * ((H + 2.1) / H)
+		kit.cyl(cp + Vector3(0, 13.1 + 5.0, 0), 0.0, 7.7, 10.0, K.mat("slate"), 32)
+		kit.ball(cp + Vector3(0, 23.25, 0), 0.32, K.mat("gold"))
+		kit.cyl(cp + Vector3(0, 24.6, 0), 0.07, 0.08, 2.8, K.mat("iron"), 6)
+		flags.append([cp + Vector3(0, 25.9, 0), cols[i % 2]])
+	for s in [-1.0, 1.0]:
+		var gp := Vector3(s * 6.8, 0, H + 1.6)
+		kit.cyl(gp + Vector3(0, 5.0, 0), 3.0, 3.25, 16.0, K.mat("stone"), 24)
+		kit.cyl(gp + Vector3(0, 12.55, 0), 3.4, 3.15, 0.6, K.mat("stone_dark"), 24)
+		for m in 9:
+			var a := TAU * m / 9.0
+			kit.box(gp + Vector3(sin(a) * 3.15, 13.4, cos(a) * 3.15), Vector3(0.8, 1.1, 0.55), K.mat("stone"), a)
+		kit.cyl(gp + Vector3(0, 13.3 + 3.25, 0), 0.0, 3.6, 6.5, K.mat("slate"), 24)
+		kit.ball(gp + Vector3(0, 19.95, 0), 0.2, K.mat("gold"))
+		kit.cyl(gp + Vector3(0, 21.0, 0), 0.05, 0.06, 2.2, K.mat("iron"), 6)
+		flags.append([gp + Vector3(0, 21.9, 0), cols[1]])
+		for k in 2:
+			var a: float = (0.5 + k) * PI * 0.5 * s
+			kit.box(gp + Vector3(sin(a) * 3.05, 6.5 + k * 3.2, cos(a) * 3.05), Vector3(0.36, 1.4, 0.12), K.mat("slit"), a)
+		var cs := CollisionShape3D.new()
+		var cy := CylinderShape3D.new()
+		cy.radius = 3.1
+		cy.height = 16.0
+		cs.shape = cy
+		cs.position = gp + Vector3(0, 5.0, 0)
+		body.add_child(cs)
+		ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(), gp + Vector3(-0.8, 9.6, 3.05)))
+	var crowns: Node3D = kit.build(1800.0 if Assets.compat else 3200.0, true)
+	crowns.transform = base
+	node.add_child(crowns)
+	for f in flags:
+		node.add_child(K.flag_node(base * (f[0] as Vector3), f[1], float(info.yaw)))
 
 
 func _ruin_remap(ext) -> void:

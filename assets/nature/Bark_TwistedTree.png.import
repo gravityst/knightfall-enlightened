@@ -3,27 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cyd7xsiyus46t"
-path="res://.godot/imported/Bark_TwistedTree.png-cf72b9434dca83cdc6c095258bab63bd.ctex"
+path.s3tc="res://.godot/imported/Bark_TwistedTree.png-cf72b9434dca83cdc6c095258bab63bd.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/nature/Bark_TwistedTree.png"
-dest_files=["res://.godot/imported/Bark_TwistedTree.png-cf72b9434dca83cdc6c095258bab63bd.ctex"]
+dest_files=["res://.godot/imported/Bark_TwistedTree.png-cf72b9434dca83cdc6c095258bab63bd.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

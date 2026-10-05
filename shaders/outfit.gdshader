@@ -10,6 +10,7 @@ uniform bool use_normal = false;
 uniform bool use_orm = false;
 uniform bool is_skin = false;
 uniform bool is_hair = false;
+uniform bool is_eye = false;
 uniform float base_roughness = 0.8;
 uniform bool mask_body = false;
 uniform float keep[96];
@@ -60,7 +61,12 @@ void fragment() {
 		metal = orm.b;
 	}
 	if (is_skin) {
-		c *= skin_tint;
+		if (!is_eye && skin_tint.r < 0.995) {
+			// the kit ships one deep skin tone: keep its shading and detail, and set the person's
+			// own complexion (skin_tint: the average skin colour, linear)
+			float l = dot(c, vec3(0.3, 0.59, 0.11));
+			c = skin_tint * (l / 0.15);
+		}
 	} else if (is_hair) {
 		c = c * hair_color * 1.6;
 		rough = 0.55;

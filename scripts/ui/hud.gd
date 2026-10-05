@@ -367,7 +367,7 @@ func _ready() -> void:
 	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UITheme.place(death_label, Control.PRESET_CENTER, Vector2(-500, -60), Vector2(1000, 120))
 	root.add_child(death_label)
-	if OS.has_feature("web"):
+	if OS.has_feature("web") and not Game.mobile:
 		_click_label = UITheme.label("Click to play", 36, Color(1.0, 0.88, 0.6), "header")
 		_click_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_click_label.add_theme_constant_override("outline_size", 10)
@@ -376,12 +376,29 @@ func _ready() -> void:
 		_click_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_click_label.visible = false
 		root.add_child(_click_label)
+	if Game.mobile:
+		_mobile_layout()
 	Game.notify.connect(_on_notify)
 	if Game.player_ref:
 		(Game.player_ref as Player).interaction_changed.connect(set_prompt)
 	if ResourceLoader.exists("res://scripts/ui/menus.gd"):
 		menus = load("res://scripts/ui/menus.gd").new()
 		add_child(menus)
+
+
+## Phones: the touch controls take the bottom corners, so the vitals move to the top left, the
+## notes under the compass, the day and purse under the menu buttons, and the gear line goes.
+func _mobile_layout() -> void:
+	UITheme.place(vitals, Control.PRESET_TOP_LEFT, Vector2(20, 12), Vector2(360, 190))
+	UITheme.place(tracker, Control.PRESET_TOP_LEFT, Vector2(24, 196), Vector2(560, 110))
+	UITheme.place(info, Control.PRESET_TOP_RIGHT, Vector2(-490, 104), Vector2(466, 110))
+	UITheme.place(purse, Control.PRESET_TOP_RIGHT, Vector2(-444, 212), Vector2(420, 34))
+	UITheme.place(notes, Control.PRESET_CENTER_TOP, Vector2(-330, 120), Vector2(660, 220))
+	UITheme.place(subtitle, Control.PRESET_CENTER_BOTTOM, Vector2(-380, -200), Vector2(760, 110))
+	UITheme.place(prompt_box, Control.PRESET_CENTER, Vector2(-500, 56), Vector2(1000, 52))
+	UITheme.place(compass, Control.PRESET_CENTER_TOP, Vector2(-300, 14), Vector2(600, 34))
+	compass.custom_minimum_size = Vector2(600, 34)
+	gear.visible = false
 
 
 func _full_rect(c: Color) -> ColorRect:
@@ -451,6 +468,7 @@ func _process(delta: float) -> void:
 		_hidden = not _hidden
 		for c in [compass, info, vitals, purse, gear, prompt_box, crosshair, notes, tracker, target_bar, damage_dir]:
 			c.visible = not _hidden
+		gear.visible = gear.visible and not Game.mobile
 	_track_t -= delta
 	if _track_t <= 0.0:
 		_track_t = 0.5
@@ -539,6 +557,8 @@ func set_prompt(t: String) -> void:
 	if t.length() > 4 and t[0] == "[" and t[2] == "]":
 		key = t[1]
 		t = t.substr(4)
+		if Game.mobile and key == "E":
+			key = "Use"            # (the touch button's name)
 	_key_box.visible = key != ""
 	prompt_key.text = key
 	prompt.text = t

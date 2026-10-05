@@ -35,9 +35,9 @@ const BIOME_TABLE := {
 	7: {"alpaca": 2.0, "fox": 1.0, "wild_horse": 0.5},                                      # desert
 	1: {"fox": 0.6, "deer": 0.4},                                                           # beach
 }
-var LAND_GROUPS := 10 if Assets.compat else 16      # herds, packs and solitary beasts kept around the player
-var WATER_GROUPS := 4 if Assets.compat else 6
-var FLOCKS := 3 if Assets.compat else 4
+var LAND_GROUPS := (7 if Game.mobile else 10) if Assets.compat else 16      # herds, packs and solitary beasts kept around the player
+var WATER_GROUPS := (2 if Game.mobile else 4) if Assets.compat else 6
+var FLOCKS := (2 if Game.mobile else 3) if Assets.compat else 4
 
 var groups: Array = []
 var animals: Array = []
@@ -92,6 +92,34 @@ func _process(delta: float) -> void:
 		_try_spawn_flock(p)
 	_farm_animals(p)
 	_t = 0.6
+
+
+## Fills the land, water and sky around the player at once (behind the loading screen), so the
+## first beasts and their first drawing don't land in the opening seconds of play.
+func fill_now() -> void:
+	var pl: Node3D = Game.player_ref
+	if pl == null:
+		return
+	var p := pl.global_position
+	var land := 0
+	var water := 0
+	var flocks := 0
+	for g in groups:
+		match String(g.kind):
+			"prey", "predator": land += 1
+			"water", "fish": water += 1
+			"bird": flocks += 1
+	var cap := LAND_GROUPS + (3 if Game.is_night() else 0)
+	for i in cap * 3:
+		if land >= cap:
+			break
+		if _try_spawn_land(p, pl):
+			land += 1
+	for i in maxi(WATER_GROUPS - water, 0):
+		_try_spawn_water(p)
+	for i in maxi(FLOCKS - flocks, 0):
+		_try_spawn_flock(p)
+	_farm_animals(p)
 
 
 func _rand_point(p: Vector3, rmin: float, rmax: float) -> Vector3:
@@ -199,7 +227,7 @@ func _spawn_group(sp_name: String, at: Vector3) -> Dictionary:
 	var spec: Dictionary = SPECIES[sp_name]
 	var n := randi_range(int(spec.group[0]), int(spec.group[1]))
 	if Assets.compat:
-		n = mini(n, 4)          # the browser: smaller herds
+		n = mini(n, 3 if Game.mobile else 4)          # the browser: smaller herds
 	Game.mark("%d %s spawn" % [n, sp_name])
 	var g := {"species": sp_name, "kind": spec.kind, "center": at, "members": [], "flee_t": 0.0}
 	for i in n:

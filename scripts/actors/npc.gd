@@ -210,7 +210,7 @@ func _follow_path(delta: float) -> void:
 	_yaw = lerp_angle(_yaw, atan2(dir.x, dir.z), 1.0 - exp(-delta * 8.0))
 	model.rotation.y = _yaw
 	model.position = Vector3.ZERO
-	var walk := "Walk_Formal" if data.role in ["duke", "official"] else "Walk"
+	var walk := "Walk_Formal" if data.role in ["duke", "queen", "official"] else "Walk"
 	if speed > 2.6:
 		model.play("Jog_Fwd", 0.2, speed / 3.1)
 	else:
@@ -485,7 +485,7 @@ func get_interaction(_p) -> String:
 			return ""
 		"cook":
 			return "[E] Talk to %s the Cook" % data.name
-	return "[E] Talk to %s%s" % [data.name, (" the " + NPCManager.role_title(data)) if data.role != "villager" else ""]
+	return "[E] Talk to %s%s" % [data.name, (" the " + NPCManager.role_title(data)) if data.role not in ["villager", "duke", "queen"] else ""]
 
 
 func interact(_p) -> void:

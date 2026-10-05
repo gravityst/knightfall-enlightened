@@ -157,6 +157,17 @@ void fragment() {
 				alb[i] = textureGrad(albedo_array, vec3(wp.zy * it, 8.0), dpx.zy * it, dpy.zy * it) * bw.x
 					+ textureGrad(albedo_array, vec3(wp.xy * it, 8.0), dpx.xy * it, dpy.xy * it) * bw.z
 					+ textureGrad(albedo_array, vec3(uv, 8.0), dpx.xz * it, dpy.xz * it) * bw.y;
+				// the rock's strata repeat every tile: a second, larger and shifted sample on the steep
+				// faces breaks the bands up across a mountainside
+				float it2 = 1.0 / 41.0;
+				vec4 big = textureGrad(albedo_array, vec3(wp.zy * it2 + 0.37, 8.0), dpx.zy * it2, dpy.zy * it2) * bw.x
+					+ textureGrad(albedo_array, vec3(wp.xy * it2 + 0.61, 8.0), dpx.xy * it2, dpy.xy * it2) * bw.z;
+				alb[i] = mix(alb[i], big + alb[i] * bw.y, (0.3 + macro2 * 0.4) * (1.0 - bw.y));
+				// grey granite in the hills and mountains; the warm sandstone only in the desert
+				float desert_rock = clamp(1.0 - abs(biome_id - 7.0), 0.0, 1.0) + beach;
+				float lum = dot(alb[i].rgb, vec3(0.3, 0.59, 0.11));
+				vec3 granite = vec3(lum) * vec3(0.9, 0.93, 1.0) * (0.86 + macro * 0.22);
+				alb[i].rgb = mix(granite, alb[i].rgb, clamp(0.18 + desert_rock * 0.82, 0.0, 1.0));
 			} else {
 				float it = 1.0 / tile[i];
 				alb[i] = textureGrad(albedo_array, vec3(uv, float(i)), dpx.xz * it, dpy.xz * it);

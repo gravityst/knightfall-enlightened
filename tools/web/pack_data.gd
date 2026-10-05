@@ -28,18 +28,21 @@ func _init() -> void:
 	var spec := []
 	var sums := ""
 	for i in packs.size():
-		var name := "data%d.pck" % (i + 1)
+		var tmp := out.path_join("data%d.pck" % (i + 1))
 		var pk := PCKPacker.new()
-		pk.pck_start(out.path_join(name))
+		pk.pck_start(tmp)
 		for f in packs[i][0]:
 			pk.add_file(f, ProjectSettings.globalize_path(f))
 		pk.flush()
-		var size := FileAccess.open(out.path_join(name), FileAccess.READ).get_length()
+		var size := FileAccess.open(tmp, FileAccess.READ).get_length()
+		# named by content: a kept copy (see tools/web/sw.js) can never be out of date
+		var md5 := FileAccess.get_md5(tmp)
+		var name := "data%d-%s.pck" % [i + 1, md5.substr(0, 10)]
+		DirAccess.rename_absolute(tmp, out.path_join(name))
 		spec.append({"file": name, "size": size})
-		sums += FileAccess.get_md5(out.path_join(name))
+		sums += md5
 		print("PACK %s %.1f MB (%d files)" % [name, size / 1048576.0, packs[i][0].size()])
 	var src := FileAccess.get_file_as_string("res://scripts/core/web_build.gd")
-	# named by content: players keep their cached packs until the island's data really changes
 	var build := sums.md5_text().substr(0, 12)
 	var lines := []
 	for l in src.split("\n"):

@@ -220,11 +220,14 @@ func update_collision(p: Vector3) -> void:
 	var t := WorldData.HM_TEXEL
 	var ci := int(round((p.x + WorldData.HALF) / t))
 	var cj := int(round((p.z + WorldData.HALF) / t))
-	var i0 := ci - COL_N / 2
-	var j0 := cj - COL_N / 2
-	# cut the patch out of the height image and let the engine convert it (heights / texel)
-	var sub := Image.create(COL_N, COL_N, false, Image.FORMAT_RF)
-	sub.blit_rect(WorldData.height_img, Rect2i(i0, j0, COL_N, COL_N), Vector2i.ZERO)
+	var i0 := clampi(ci - COL_N / 2, 0, WorldData.HM_RES - COL_N)
+	var j0 := clampi(cj - COL_N / 2, 0, WorldData.HM_RES - COL_N)
+	# cut the patch out of the heights, row by row, and let the engine convert it (heights / texel)
+	var rows := PackedFloat32Array()
+	for j in COL_N:
+		var at := (j0 + j) * WorldData.HM_RES + i0
+		rows.append_array(WorldData.heights.slice(at, at + COL_N))
+	var sub := Image.create_from_data(COL_N, COL_N, false, Image.FORMAT_RF, rows.to_byte_array())
 	var shape := HeightMapShape3D.new()
 	shape.update_map_data_from_image(sub, 0.0, 1.0 / t)
 	_col_shape.shape = shape

@@ -33,7 +33,8 @@ func _ready() -> void:
 	add_child(_label)
 	_last = Time.get_ticks_usec()
 	_start = _last
-	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+	# (the GPU timing queries can themselves stall some drivers: only with ?perfgpu / --perfgpu)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), Game.debug_flag("perfgpu"))
 
 
 func _process(delta: float) -> void:
@@ -44,7 +45,7 @@ func _process(delta: float) -> void:
 	if _times.size() > 240:
 		_times.pop_front()
 	if ms > HITCH_MS:
-		var tags := ", ".join(Game.frame_marks) if not Game.frame_marks.is_empty() else "nothing marked"
+		var tags := (", ".join(Game.frame_marks) + ", end (+%d ms)" % ((now - Game.mark_t) / 1000)) if not Game.frame_marks.is_empty() else "nothing marked"
 		# where the time went: drawing (a shader compiling) or the game's own code
 		var vr := get_viewport().get_viewport_rid()
 		var draw := RenderingServer.viewport_get_measured_render_time_cpu(vr) + RenderingServer.get_frame_setup_time_cpu()
@@ -54,6 +55,7 @@ func _process(delta: float) -> void:
 			_hitches.pop_back()
 		print("HITCH %d ms at %.1fs: %s" % [int(ms), float(now - _start) / 1e6, tags])
 	Game.frame_marks.clear()
+	Game.mark_t = Time.get_ticks_usec()
 	if Game.tour and Game.world_ref and Game.world_ref.ready_to_play and not _tour_done:
 		_walk(delta, ms)
 	_show()

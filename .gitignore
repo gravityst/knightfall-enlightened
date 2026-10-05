@@ -7,3 +7,6 @@
 .DS_Store
 *.mov
 __pycache__/
+
+# the browser build: published from the gh-pages branch (tools/web/deploy.sh)
+docs/

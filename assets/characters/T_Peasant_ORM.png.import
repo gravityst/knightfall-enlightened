@@ -3,27 +3,28 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://kwd4lfi1y130"
-path="res://.godot/imported/T_Peasant_ORM.png-a4f033afa7da40713c12060489c4ec0c.ctex"
+path.s3tc="res://.godot/imported/T_Peasant_ORM.png-a4f033afa7da40713c12060489c4ec0c.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/characters/T_Peasant_ORM.png"
-dest_files=["res://.godot/imported/T_Peasant_ORM.png-a4f033afa7da40713c12060489c4ec0c.ctex"]
+dest_files=["res://.godot/imported/T_Peasant_ORM.png-a4f033afa7da40713c12060489c4ec0c.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=2
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
