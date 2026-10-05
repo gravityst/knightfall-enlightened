@@ -397,6 +397,12 @@ func _build_prop(info: Dictionary, ext, p: Dictionary, style: String, rng: Rando
 			ext.add(P + "WeaponStand.gltf", xf)
 			_static_box(node, xf, Vector3(0, 0.55, 0), Vector3(1.3, 1.1, 0.9))
 		"cart":
+			if info.type == "castle":
+				# not in the way from the gate to the keep: beside the stable, along the gate wall
+				var cb := Transform3D(Basis(Vector3.UP, float(info.yaw)), info.center)
+				var cp := cb * Vector3(9.5, 0, 22.0)
+				cp.y = WorldData.height_at(cp.x, cp.z)
+				xf = Transform3D(Basis(Vector3.UP, float(info.yaw) + PI * 0.5), cp)
 			ext.add(V + "Prop_Wagon.gltf", xf)
 			_static_box(node, xf, Vector3(0, 0.75, -1.1), Vector3(1.9, 1.5, 3.8))
 		"banner":
