@@ -726,10 +726,11 @@ func spawn_nearby_now() -> void:
 		flush_spawns()
 
 
-## Spawns everyone already queued (used by tests and teleports).
+## Spawns everyone already queued (used by tests and teleports), up to the cap on active people
+## (the rest wait in the queue for a free place, or this would never finish in a crowded town).
 func flush_spawns() -> void:
 	var pl: Node3D = Game.player_ref
-	while not _spawn_queue.is_empty() and pl:
+	while not _spawn_queue.is_empty() and pl and active.size() < MAX_ACTIVE:
 		_spawn_next(pl.global_position)
 
 
