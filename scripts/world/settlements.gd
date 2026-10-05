@@ -7,7 +7,26 @@ const P := "res://assets/props/"
 const GREAT_KEEP := preload("res://scripts/world/great_keep.gd")
 const FORT := "res://assets/castle/modular_fort_01/modular_fort_01.gltf"
 const GATE := "res://assets/castle/large_iron_gate/large_iron_gate.gltf"
-const H := 29.12
+const H := 29.12          # a ruined castle's walls (half the side)
+const HC := 38.0           # a castle's walls, now larger round its royal keep
+## A castle's courtyard round the royal keep: building type -> [x, z, yaw] (castle-local, the gate
+## at +z). The ranges stand back against the side walls, with lanes past the keep.
+const CASTLE_LAYOUT := {
+	"keep": [0.0, -13.0, 0.0],
+	"chapel": [-24.5, -19.0, PI * 0.5],
+	"kitchen": [-24.5, -6.0, PI * 0.5],
+	"mews": [-24.0, 7.5, PI * 0.5],
+	"barracks": [24.0, -16.0, 0.0],
+	"stable": [24.5, 4.0, -PI * 0.5],
+}
+## ...and its yard: prop type -> places in turn ([x, z, yaw], castle-local).
+const CASTLE_PROPS := {
+	"dummy": [[12.0, 15.0, PI], [14.6, 15.4, PI]],
+	"weaponstand": [[16.4, 12.6, -PI * 0.5]],
+	"well": [[-11.0, 17.0, 0.0]],
+	"cart": [[9.5, 22.0, PI * 0.5]],
+	"banner": [[-7.6, 9.6, 0.0], [7.6, 9.6, 0.0]],
+}
 
 var infos: Array = []                 # runtime info per settlement (same order as WorldData.settlements)
 var poi_infos: Array = []
@@ -70,15 +89,17 @@ func _build_settlement(s: Dictionary) -> Dictionary:
 	for b0 in s.get("buildings", []):
 		var b: Dictionary = b0
 		var great: bool = kind == "castle" and b.type == "keep"
-		if great:
-			# the great keep: at the back of the courtyard, facing the gate
+		if kind == "castle" and CASTLE_LAYOUT.has(b.type):
+			# the courtyard is laid out round the royal keep (at the back, facing the gate)
 			b = b0.duplicate()
-			var kp := Transform3D(Basis(Vector3.UP, float(s.yaw)), Vector3(float(s.x), 0, float(s.z))) * Vector3(0, 0, -9.0)
+			var lay: Array = CASTLE_LAYOUT[b.type]
+			var kp := Transform3D(Basis(Vector3.UP, float(s.yaw)), Vector3(float(s.x), 0, float(s.z))) * Vector3(float(lay[0]), 0, float(lay[1]))
 			b.x = kp.x
 			b.z = kp.z
-			b.yaw = float(s.yaw)
-			b.w = int(GREAT_KEEP.W)
-			b.d = int(GREAT_KEEP.D)
+			b.yaw = float(s.yaw) + float(lay[2])
+			if great:
+				b.w = int(GREAT_KEEP.W)
+				b.d = int(GREAT_KEEP.D)
 		var by := _footprint_height(b)
 		if kind in ["castle", "ruin"]:
 			by = maxf(by, cy)
@@ -199,8 +220,8 @@ func _merge_nav(info: Dictionary, r: Builder.Result) -> void:
 		for l in n.links:
 			links.append(int(l) + base)
 		info.nav_l.append(links)
-	for key in ["beds", "work", "sit"]:
-		for sp in r.spots[key]:
+	for key in ["beds", "work", "sit", "straw"]:
+		for sp in r.spots.get(key, []):
 			sp["nav"] = int(sp.nav) + base
 	r.set_meta("door_out_g", r.door_out + base)
 	r.set_meta("door_in_g", r.door_in + base)
@@ -244,6 +265,11 @@ func _build_outdoor_nav(info: Dictionary, s: Dictionary) -> void:
 	var c: Vector3 = info.center
 	var kind := String(s.type)
 	var hubs := []
+	if kind == "castle":
+		hubs = _castle_lanes(info)
+		_connect_doors(info, hubs)
+		_road_exits(info)
+		return
 	var center_i := _add_nav(info, _ground(c.x, c.z + 4.0))
 	hubs.append(center_i)
 	var ring_r := 13.0 if kind == "town" else (10.0 if kind == "village" else 8.0)
@@ -285,7 +311,48 @@ func _build_outdoor_nav(info: Dictionary, s: Dictionary) -> void:
 		info.gate_out = go
 		hubs.append(gi)
 	info.hubs = hubs
-	# connect building doors
+	_connect_doors(info, hubs)
+	_road_exits(info)
+
+
+## A castle's courtyard: the way from the gate past the keep's stair, and lanes either side of the
+## keep between it and the ranges along the walls.
+func _castle_lanes(info: Dictionary) -> Array:
+	var cb := Transform3D(Basis(Vector3.UP, float(info.yaw)), info.center)
+	var at := func(x: float, z: float) -> int:
+		var w := cb * Vector3(x, 0, z)
+		return _add_nav(info, _ground(w.x, w.z))
+	var front := [at.call(0.0, 12.0), at.call(0.0, 22.0)]
+	var gi: int = at.call(0.0, HC - 5.0)
+	var go: int = at.call(0.0, HC + 12.0)
+	_link(info, front[0], front[1])
+	_link(info, front[1], gi)
+	_link(info, gi, go)
+	info.gate_in = gi
+	info.gate_out = go
+	# folk loiter off to the sides, never in the gateway or on the way up to the keep
+	var hubs := []
+	for e in [[-7.0, 16.0], [7.0, 18.0], [-9.0, 27.0], [9.0, 27.0]]:
+		var i: int = at.call(float(e[0]), float(e[1]))
+		_link(info, i, front[0] if float(e[1]) < 20.0 else front[1])
+		hubs.append(i)
+	for sx in [-1.0, 1.0]:
+		var prev := -1
+		for z in [24.0, 12.0, 0.0, -12.0, -24.0]:
+			var i: int = at.call(sx * 18.8, z)
+			hubs.append(i)
+			if prev >= 0:
+				_link(info, prev, i)
+			prev = i
+			if z == 24.0:
+				_link(info, i, front[1])
+			elif z == 12.0:
+				_link(info, i, front[0])
+	info.hubs = hubs
+	return hubs
+
+
+func _connect_doors(info: Dictionary, hubs: Array) -> void:
 	for bi in info.buildings.size():
 		var b: Dictionary = info.buildings[bi]
 		var dout: int = b.door_out
@@ -305,7 +372,11 @@ func _build_outdoor_nav(info: Dictionary, s: Dictionary) -> void:
 			_link(info, dout, mid)
 			best = _closest(info, hubs, out)
 		_link(info, dout, best)
-	# road exits
+
+
+func _road_exits(info: Dictionary) -> void:
+	var c: Vector3 = info.center
+	var hubs: Array = info.hubs
 	for rd in WorldData.roads:
 		if rd.a != info.name and rd.b != info.name:
 			continue
@@ -355,6 +426,21 @@ func _lantern(ext, node: Node3D, r: Builder.Result, style: String) -> void:
 
 # ------------------------------------------------------------------ props
 func _build_prop(info: Dictionary, ext, p: Dictionary, style: String, rng: RandomNumberGenerator) -> void:
+	if info.type == "castle" and CASTLE_PROPS.has(String(p.type)):
+		# the castle yard has its own places for these, clear of the keep and the lanes
+		var used: Dictionary = info.get("prop_i", {})
+		var k: int = used.get(p.type, 0)
+		var spots: Array = CASTLE_PROPS[p.type]
+		used[p.type] = k + 1
+		info["prop_i"] = used
+		if k >= spots.size():
+			return
+		var cb := Transform3D(Basis(Vector3.UP, float(info.yaw)), info.center)
+		var cp := cb * Vector3(float(spots[k][0]), 0, float(spots[k][1]))
+		p = p.duplicate()
+		p.x = cp.x
+		p.z = cp.z
+		p.yaw = float(info.yaw) + float(spots[k][2])
 	var x := float(p.x)
 	var z := float(p.z)
 	var y := WorldData.height_at(x, z)
@@ -397,12 +483,6 @@ func _build_prop(info: Dictionary, ext, p: Dictionary, style: String, rng: Rando
 			ext.add(P + "WeaponStand.gltf", xf)
 			_static_box(node, xf, Vector3(0, 0.55, 0), Vector3(1.3, 1.1, 0.9))
 		"cart":
-			if info.type == "castle":
-				# not in the way from the gate to the keep: beside the stable, along the gate wall
-				var cb := Transform3D(Basis(Vector3.UP, float(info.yaw)), info.center)
-				var cp := cb * Vector3(9.5, 0, 22.0)
-				cp.y = WorldData.height_at(cp.x, cp.z)
-				xf = Transform3D(Basis(Vector3.UP, float(info.yaw) + PI * 0.5), cp)
 			ext.add(V + "Prop_Wagon.gltf", xf)
 			_static_box(node, xf, Vector3(0, 0.75, -1.1), Vector3(1.9, 1.5, 3.8))
 		"banner":
@@ -530,6 +610,7 @@ func _fort(ext, piece: String, xf: Transform3D) -> void:
 
 
 func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerator) -> void:
+	var half := H if ruined else HC
 	var c: Vector3 = info.center
 	var yaw: float = info.yaw
 	var base := Transform3D(Basis(Vector3.UP, yaw), Vector3(c.x, c.y - 0.15, c.z))
@@ -540,7 +621,7 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 	body.collision_layer = 1
 	node.add_child(body)
 	body.transform = base
-	var corners := [Vector3(-H, 0, -H), Vector3(H, 0, -H), Vector3(H, 0, H), Vector3(-H, 0, H)]
+	var corners := [Vector3(-half, 0, -half), Vector3(half, 0, -half), Vector3(half, 0, half), Vector3(-half, 0, half)]
 	for side in 4:
 		var a: Vector3 = corners[side]
 		var b: Vector3 = corners[(side + 1) % 4]
@@ -548,26 +629,23 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 		var syaw := atan2(dir.x, dir.z)
 		var basis := Basis(Vector3.UP, syaw)
 		var out := basis * Vector3(1, 0, 0)
-		var pieces := []
-		if side == 2:
-			pieces = [["wall_thin_straight_01", 14.82, 2.55], ["wall_thin_straight_04", 7.41, 2.55], ["wall_thin_gate_01", 7.41, 2.55], ["wall_thin_straight_04", 7.41, 2.55], ["wall_thin_straight_01", 14.82, 2.55]]
-		else:
-			pieces = [["wall_thick_straight_01", 14.56, 4.17], ["wall_thick_straight_02", 14.56, 4.17], ["wall_thick_straight_01", 14.56, 4.17], ["wall_thick_straight_02", 14.56, 4.17]]
+		var pieces: Array = _wall_pieces(2.0 * half, side == 2, ruined)
 		var total := 0.0
 		for pc in pieces:
-			total += float(pc[1])
-		var t := (2.0 * H - total) * 0.5
+			total += float(pc[1]) * float(pc[3])
+		var t := (2.0 * half - total) * 0.5
 		for k in pieces.size():
 			var pc: Array = pieces[k]
 			var lp := a + dir * t
-			var len := float(pc[1])
+			var sc := float(pc[3])
+			var len := float(pc[1]) * sc
 			var thick := float(pc[2])
 			var gap: bool = ruined and rng.randf() < 0.3 and pc[0] != "wall_thin_gate_01"
 			var squash := 1.0
 			if ruined and not gap and rng.randf() < 0.45:
 				squash = rng.randf_range(0.35, 0.75)
 			if not gap:
-				var xf := base * Transform3D(basis.scaled(Vector3(1, squash, 1)), lp)
+				var xf := base * Transform3D(basis * Basis.from_scale(Vector3(1, squash, sc)), lp)
 				_fort(ext, pc[0], xf)
 				if pc[0] == "wall_thin_gate_01":
 					var gap_w := 4.4
@@ -580,7 +658,7 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 				else:
 					_box(body, lp + out * thick * 0.5 + dir * len * 0.5 + Vector3(0, 4.26 * squash, 0), Vector3(thick, 8.52 * squash, len), syaw)
 				if side != 2 and not ruined:
-					var wxf := base * Transform3D(basis, lp - out * 3.37)
+					var wxf := base * Transform3D(basis * Basis.from_scale(Vector3(1, 1, sc)), lp - out * 3.37)
 					_fort(ext, "wall_walkway_straight_01", wxf)
 					_box(body, lp - out * 1.68 + dir * len * 0.5 + Vector3(0, 3.85, 0), Vector3(3.37, 7.7, len), syaw)
 			else:
@@ -592,7 +670,7 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 	for k in 4:
 		if ruined and k % 2 == 1:
 			continue
-		var cp: Vector3 = corners[k] * ((H + 2.1) / H)
+		var cp: Vector3 = corners[k] * ((half + 2.1) / half)
 		var sy := rng.randf_range(0.4, 0.75) if ruined else 1.0
 		_fort(ext, "tower_round", base * Transform3D(Basis().scaled(Vector3(1, sy, 1)), cp))
 		var cs := CollisionShape3D.new()
@@ -620,13 +698,13 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 		# guard walk loop on top of the walkways (back, right and left walls)
 		var wy := c.y - 0.15 + 7.75
 		var loop := []
-		for q in [Vector3(-H + 1.7, 0, H - 9.0), Vector3(-H + 1.7, 0, -H + 1.7), Vector3(0, 0, -H + 1.7), Vector3(H - 1.7, 0, -H + 1.7), Vector3(H - 1.7, 0, H - 9.0)]:
+		for q in [Vector3(-half + 1.7, 0, half - 9.0), Vector3(-half + 1.7, 0, -half + 1.7), Vector3(0, 0, -half + 1.7), Vector3(half - 1.7, 0, -half + 1.7), Vector3(half - 1.7, 0, half - 9.0)]:
 			var wp: Vector3 = base * q
 			loop.append(Vector3(wp.x, wy, wp.z))
 		info.walk_loop = loop
 		# gate torches
 		for sgn in [-1.0, 1.0]:
-			var tp := base * Vector3(sgn * 3.4, 3.2, H + 2.9)
+			var tp := base * Vector3(sgn * 3.4, 3.2, half + 2.9)
 			var tor := Assets.instance_sized(P + "Torch_Metal.gltf", 0.7, "y")
 			tor.position = tp
 			node.add_child(tor)
@@ -642,54 +720,126 @@ func _build_castle(info: Dictionary, ext, ruined: bool, rng: RandomNumberGenerat
 			node.add_child(l)
 			street_lights.append(l)
 		for k in 4:
-			var cp: Vector3 = corners[k] * ((H + 2.1) / H)
+			var cp: Vector3 = corners[k] * ((half + 2.1) / half)
 			ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(Vector3.UP, atan2(cp.x, cp.z)), cp * 1.0 + cp.normalized() * 7.8 + Vector3(0, 11.0, 0)))
-		_castle_crowns(info, base, body, ext)
+		_castle_crowns(info, base, body, ext, half)
 
 
-## The silhouette across the plain: slate cones and flags on the corner towers, and a gatehouse -
-## two round towers flanking the gate, battlemented and capped the same way.
-func _castle_crowns(info: Dictionary, base: Transform3D, body: StaticBody3D, ext) -> void:
+## The fort kit's wall pieces for a side `length` long, each [piece, length, thickness, stretch]:
+## thick walls on three sides; on the gate side thin walls either side of the gate. A ruin keeps
+## its old fixed set.
+func _wall_pieces(length: float, gate: bool, ruined: bool) -> Array:
+	if ruined:
+		if gate:
+			return [["wall_thin_straight_01", 14.82, 2.55, 1.0], ["wall_thin_straight_04", 7.41, 2.55, 1.0], ["wall_thin_gate_01", 7.41, 2.55, 1.0], ["wall_thin_straight_04", 7.41, 2.55, 1.0], ["wall_thin_straight_01", 14.82, 2.55, 1.0]]
+		return [["wall_thick_straight_01", 14.56, 4.17, 1.0], ["wall_thick_straight_02", 14.56, 4.17, 1.0], ["wall_thick_straight_01", 14.56, 4.17, 1.0], ["wall_thick_straight_02", 14.56, 4.17, 1.0]]
+	if not gate:
+		var n := maxi(int(round(length / 14.56)), 1)
+		var out := []
+		for i in n:
+			out.append(["wall_thick_straight_01" if i % 2 == 0 else "wall_thick_straight_02", 14.56, 4.17, length / (n * 14.56)])
+		return out
+	# the gate in the middle, the rest filled from both ends
+	var side := (length - 7.41) * 0.5
+	var run := []
+	var got := 0.0
+	while side - got > 11.0:
+		run.append(["wall_thin_straight_01", 14.82, 2.55])
+		got += 14.82
+	if side - got > 3.7:
+		run.append(["wall_thin_straight_04", 7.41, 2.55])
+		got += 7.41
+	var s := side / maxf(got, 0.01)
+	var out := []
+	for pc in run:
+		out.append([pc[0], pc[1], pc[2], s])
+	out.append(["wall_thin_gate_01", 7.41, 2.55, 1.0])
+	for i in range(run.size() - 1, -1, -1):
+		out.append([run[i][0], run[i][1], run[i][2], s])
+	return out
+
+
+## The silhouette across the plain: the corner towers rise a stage higher under slate cones, a
+## tower stands out from the middle of each wall, and the gate is a gatehouse - two great round
+## towers and a battlemented block over the gateway - all flying flags.
+func _castle_crowns(info: Dictionary, base: Transform3D, body: StaticBody3D, ext, half: float) -> void:
 	var K = GREAT_KEEP
 	var kit = K.Kit.new()
 	var royal := String(info.name) == NPCManager.ROYAL_SEAT
 	var cols := [Color(0.62, 0.05, 0.07), Color(0.86, 0.66, 0.2)] if royal else [Color(0.12, 0.2, 0.5), Color(0.62, 0.05, 0.07)]
 	var node: Node3D = info.node
 	var flags := []
-	var corners := [Vector3(-H, 0, -H), Vector3(H, 0, -H), Vector3(H, 0, H), Vector3(-H, 0, H)]
+	var corners := [Vector3(-half, 0, -half), Vector3(half, 0, -half), Vector3(half, 0, half), Vector3(-half, 0, half)]
 	for i in 4:
-		var cp: Vector3 = corners[i] * ((H + 2.1) / H)
-		kit.cyl(cp + Vector3(0, 13.1 + 5.0, 0), 0.0, 7.7, 10.0, K.mat("slate"), 32)
-		kit.ball(cp + Vector3(0, 23.25, 0), 0.32, K.mat("gold"))
-		kit.cyl(cp + Vector3(0, 24.6, 0), 0.07, 0.08, 2.8, K.mat("iron"), 6)
-		flags.append([cp + Vector3(0, 25.9, 0), cols[i % 2]])
+		var cp: Vector3 = corners[i] * ((half + 2.1) / half)
+		# a plinth for uneven ground, the upper stage, its battlements, the cone
+		kit.cyl(cp + Vector3(0, -3.0, 0), 8.1, 8.4, 6.6, K.mat("stone_dark"), 32)
+		kit.cyl(cp + Vector3(0, 16.25, 0), 5.4, 5.6, 6.5, K.mat("stone"), 28)
+		kit.cyl(cp + Vector3(0, 19.25, 0), 5.85, 5.6, 0.6, K.mat("stone_dark"), 28)
+		for m in 18:
+			var a := TAU * m / 18.0
+			kit.box(cp + Vector3(sin(a) * 5.75, 20.1, cos(a) * 5.75), Vector3(0.85, 1.1, 0.6), K.mat("stone"), a)
+		kit.cyl(cp + Vector3(0, 20.0 + 5.5, 0), 0.0, 6.4, 11.0, K.mat("slate"), 32)
+		kit.ball(cp + Vector3(0, 31.15, 0), 0.34, K.mat("gold"))
+		kit.cyl(cp + Vector3(0, 32.5, 0), 0.07, 0.08, 2.8, K.mat("iron"), 6)
+		for q in 6:
+			var a := TAU * (q + 0.5) / 6.0
+			kit.box(cp + Vector3(sin(a) * 5.47, 16.5, cos(a) * 5.47), Vector3(0.42, 1.6, 0.14), K.mat("slit"), a)
+		flags.append([cp + Vector3(0, 33.7, 0), cols[i % 2]])
+	# a tower out from the middle of each wall but the gate's
+	for side in [0, 1, 3]:
+		var a: Vector3 = corners[side]
+		var b: Vector3 = corners[(side + 1) % 4]
+		var dir := (b - a).normalized()
+		var out := Basis(Vector3.UP, atan2(dir.x, dir.z)) * Vector3(1, 0, 0)
+		var tp: Vector3 = (a + b) * 0.5 + out * 6.7
+		_crown_tower(kit, body, tp, 4.6, 16.0, K)
+		flags.append([tp + Vector3(0, 16.0 + 0.9 + 4.6 * 2.6 + 2.3, 0), cols[0]])
+	# the gatehouse: two great towers and the block over the gateway
 	for s in [-1.0, 1.0]:
-		var gp := Vector3(s * 6.8, 0, H + 1.6)
-		kit.cyl(gp + Vector3(0, 5.0, 0), 3.0, 3.25, 16.0, K.mat("stone"), 24)
-		kit.cyl(gp + Vector3(0, 12.55, 0), 3.4, 3.15, 0.6, K.mat("stone_dark"), 24)
-		for m in 9:
-			var a := TAU * m / 9.0
-			kit.box(gp + Vector3(sin(a) * 3.15, 13.4, cos(a) * 3.15), Vector3(0.8, 1.1, 0.55), K.mat("stone"), a)
-		kit.cyl(gp + Vector3(0, 13.3 + 3.25, 0), 0.0, 3.6, 6.5, K.mat("slate"), 24)
-		kit.ball(gp + Vector3(0, 19.95, 0), 0.2, K.mat("gold"))
-		kit.cyl(gp + Vector3(0, 21.0, 0), 0.05, 0.06, 2.2, K.mat("iron"), 6)
-		flags.append([gp + Vector3(0, 21.9, 0), cols[1]])
-		for k in 2:
-			var a: float = (0.5 + k) * PI * 0.5 * s
-			kit.box(gp + Vector3(sin(a) * 3.05, 6.5 + k * 3.2, cos(a) * 3.05), Vector3(0.36, 1.4, 0.12), K.mat("slit"), a)
-		var cs := CollisionShape3D.new()
-		var cy := CylinderShape3D.new()
-		cy.radius = 3.1
-		cy.height = 16.0
-		cs.shape = cy
-		cs.position = gp + Vector3(0, 5.0, 0)
-		body.add_child(cs)
-		ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(), gp + Vector3(-0.8, 9.6, 3.05)))
+		var gp := Vector3(s * 8.3, 0, half + 4.1)
+		_crown_tower(kit, body, gp, 4.3, 17.0, K)
+		flags.append([gp + Vector3(0, 17.0 + 0.9 + 4.3 * 2.6 + 2.3, 0), cols[1]])
+		ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(), gp + Vector3(-0.8, 10.6, 4.25)))
+	var gz0 := half
+	var gz1 := half + 6.2
+	kit.box(Vector3(0, 12.3, (gz0 + gz1) * 0.5), Vector3(8.6, 7.4, gz1 - gz0), K.mat("stone"))
+	kit.box(Vector3(0, 8.45, (gz0 + gz1) * 0.5), Vector3(8.2, 0.3, gz1 - gz0 - 0.4), K.mat("stone_dark"))
+	kit.box(Vector3(0, 15.6, (gz0 + gz1) * 0.5), Vector3(9.0, 0.5, gz1 - gz0 + 0.4), K.mat("stone_dark"))
+	for m in 5:
+		kit.box(Vector3(-3.6 + m * 1.8, 16.45, gz1 + 0.05), Vector3(1.0, 1.2, 0.6), K.mat("stone"))
+	for m in 3:
+		kit.box(Vector3(-2.4 + m * 2.4, 12.6, gz1 + 0.04), Vector3(0.42, 1.6, 0.12), K.mat("slit"))
+	ext.add(P + "Banner_1.gltf", base * Transform3D(Basis(), Vector3(-0.8, 14.0, gz1 + 0.1)))
 	var crowns: Node3D = kit.build(1800.0 if Assets.compat else 3200.0, true)
 	crowns.transform = base
 	node.add_child(crowns)
 	for f in flags:
 		node.add_child(K.flag_node(base * (f[0] as Vector3), f[1], float(info.yaw)))
+
+
+## A round tower standing on the wall: plinth, shaft, battlements, slate cone, gilded knop.
+func _crown_tower(kit, body: StaticBody3D, c: Vector3, rad: float, top: float, K) -> void:
+	kit.cyl(c + Vector3(0, (top - 4.0) * 0.5, 0), rad, rad + 0.25, top + 4.0, K.mat("stone"), 24)
+	kit.cyl(c + Vector3(0, top - 0.55, 0), rad + 0.4, rad + 0.2, 0.6, K.mat("stone_dark"), 24)
+	var n := int(TAU * rad / 1.6)
+	for m in n:
+		var a := TAU * m / float(n)
+		kit.box(c + Vector3(sin(a) * (rad + 0.15), top + 0.55, cos(a) * (rad + 0.15)), Vector3(0.8, 1.1, 0.55), K.mat("stone"), a)
+	var cone_h := rad * 2.6
+	kit.cyl(c + Vector3(0, top + 0.9 + cone_h * 0.5, 0), 0.0, rad + 0.55, cone_h, K.mat("slate"), 24)
+	kit.ball(c + Vector3(0, top + 0.9 + cone_h + 0.15, 0), 0.24, K.mat("gold"))
+	kit.cyl(c + Vector3(0, top + 0.9 + cone_h + 1.3, 0), 0.05, 0.06, 2.4, K.mat("iron"), 6)
+	for q in 4:
+		var a := TAU * (q + 0.5) / 4.0
+		kit.box(c + Vector3(sin(a) * (rad + 0.04), 6.5 + (q % 2) * 3.4, cos(a) * (rad + 0.04)), Vector3(0.38, 1.5, 0.12), K.mat("slit"), a)
+	var cs := CollisionShape3D.new()
+	var cy := CylinderShape3D.new()
+	cy.radius = rad
+	cy.height = top + 4.0
+	cs.shape = cy
+	cs.position = c + Vector3(0, (top - 4.0) * 0.5, 0)
+	body.add_child(cs)
 
 
 func _ruin_remap(ext) -> void:

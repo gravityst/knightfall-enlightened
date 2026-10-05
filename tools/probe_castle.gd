@@ -9,12 +9,27 @@ var t := 0.0
 var stuck_t := 0.0
 var last := Vector3.ZERO
 var castle := "Castle Ravenmoor"
+var route := "hall"
+## Routes through a castle, as [name, x, z] in castle coordinates (the gate at +z; the keep's
+## hall floor stands 4.6 m up, its dungeon below).
+const ROUTES := {
+	"hall": [["road", 0, 64], ["before the gate", 0, 48], ["in the gateway", 0, 39], ["courtyard", 0, 24], ["foot of the keep stair", 0, 9.0],
+		["top of the keep stair", 0, -0.4], ["hall entrance", 0, -3.5], ["hall centre", 0, -11.5], ["before the dais", 0, -19.0]],
+	"dungeon": [["courtyard", 0, 24], ["foot of the keep stair", 0, 9.0], ["top of the keep stair", 0, -0.4], ["hall centre", 0, -11.5],
+		["by the dungeon stair", -6.2, -11.9], ["top of the dungeon stair", -6.2, -12.9], ["foot of the dungeon stair", -6.2, -20.2],
+		["the dungeon", -3.6, -20.9], ["before the cells", 1.4, -17.4]],
+	"bedchamber": [["courtyard", 0, 24], ["foot of the keep stair", 0, 9.0], ["top of the keep stair", 0, -0.4], ["hall", -2.0, -6.7],
+		["by the bedchamber door", -6.2, -6.7], ["bedchamber door", -8.2, -6.7], ["royal bedchamber", -9.6, -8.6]],
+}
 
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--probe-castle="):
-			castle = a.substr(15)
+			var parts := a.substr(15).split(":")
+			castle = parts[0]
+			if parts.size() > 1:
+				route = parts[1]
 
 
 func _physics_process(delta: float) -> void:
@@ -25,14 +40,14 @@ func _physics_process(delta: float) -> void:
 	if pts.is_empty():
 		var s: Dictionary = WorldData.settlement_by_name(castle)
 		var base := Transform3D(Basis(Vector3.UP, float(s.yaw)), Vector3(float(s.x), 0, float(s.z)))
-		for e in [["road", 60.0], ["before the gate", 36.0], ["in the gateway", 29.5], ["courtyard", 18.0], ["keep steps", 8.0],
-				["keep door", 3.2], ["hall entrance", 0.5], ["hall centre", -6.0], ["before the dais", -11.0]]:
-			pts.append(base * Vector3(0, 0, float(e[1])))
+		for e in ROUTES[route]:
+			pts.append(base * Vector3(float(e[1]), 0, float(e[2])))
 			names.append(e[0])
 		var p0: Vector3 = pts[0]
 		p0.y = WorldData.height_at(p0.x, p0.z) + 0.6
 		pl.global_position = p0
 		pl.velocity = Vector3.ZERO
+		pl.collision_mask &= ~(4 | 8)        # (walk through people and beasts: this checks the stonework)
 		print("PROBE %s: start at %s" % [castle, p0])
 		return
 	if i >= pts.size():

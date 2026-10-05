@@ -77,7 +77,7 @@ var _air_t := 0.0                # time off the ground (a jump just after steppi
 
 func _ready() -> void:
 	collision_layer = 2
-	collision_mask = 1 | 4 | 8 | 16
+	collision_mask = 1 | 4 | 8 | 16 | 128     # (128: the dungeon cells' bars)
 	floor_max_angle = deg_to_rad(50.0)
 	floor_snap_length = 0.45
 	var col := CollisionShape3D.new()

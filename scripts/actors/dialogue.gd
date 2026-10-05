@@ -31,6 +31,14 @@ const HIGH_REP := ["You're the one everyone speaks of! An honour.", "Your deeds 
 static func bark(d) -> String:
 	if d.role == "cook":
 		return "Bon Appetite!"
+	if d.role == "prisoner":
+		return ["Water... please, a little water.", "I didn't do it! I swear by the Light!", "How long has it been? I can't tell day from night down here.",
+			"You there! Put in a word for me with the King!", "Don't trust the jailer. He sells our bread."][randi() % 5]
+	if d.role == "jailer":
+		return ["Keep away from the bars.", "Visiting? Don't get comfortable.", "They all say they're innocent."][randi() % 3]
+	if d.role == "heir":
+		return ["Father says I may ride out with the knights next spring!", "Have you seen the falcons? Ours is the fastest in Aldmere.",
+			"Mind the dais - only family may sit up there.", "Is it true there are wolves bigger than horses in the north?"][randi() % 4]
 	if d.role == "guard":
 		return ["Move along.", "Keep your blade sheathed.", "Nothing to see here."][randi() % 3] if randf() < 0.3 else ""
 	if d.role == "servant":
@@ -64,8 +72,11 @@ static func greeting(d) -> String:
 		if d.sname == NPCManager.ROYAL_SEAT:
 			return "You stand before %s, King of Aldmere. %s" % [d.name, "Kneel, and speak your business." if d.personality == "stern" else "Rise, traveller - my hall is open to all who keep the peace."]
 		return "You stand before %s. %s" % [d.name, "Speak, and be swift." if d.personality == "stern" else "Welcome to my hall, traveller."]
-	if d.role == "queen":
-		return "%s inclines her head. %s" % [d.name, "\"Mind your manners at court.\"" if d.personality == "stern" else "\"Be welcome at Ravenmoor. The King is generous to those who serve the realm.\""]
+	if d.role == "consort":
+		var lord := "the King" if d.sname == NPCManager.ROYAL_SEAT else "the Duke"
+		return "%s inclines her head. %s" % [d.name, "\"Mind your manners at court.\"" if d.personality == "stern" else "\"Be welcome here. %s is generous to those who serve the realm.\"" % lord.capitalize()]
+	if d.role in ["prisoner", "jailer", "heir"]:
+		return bark(d)
 	return g
 
 
@@ -131,7 +142,16 @@ static func intro(d) -> String:
 			if d.sname == NPCManager.ROYAL_SEAT:
 				return "I am %s, King of Aldmere. Every duke on this island holds his castle of my crown, and every road is under my peace." % d.name
 			return "I am %s, lord of these lands and all who dwell within its walls." % d.name
-		"queen": return "I am %s, Queen of Aldmere. I see to the court and the realm's charity - and I hear more than the King's ministers think." % d.name
+		"consort":
+			if d.sname == NPCManager.ROYAL_SEAT:
+				return "I am %s, Queen of Aldmere. I see to the court and the realm's charity - and I hear more than the King's ministers think." % d.name
+			return "I am %s. My lord husband rules this castle; I rule everything he forgets." % d.name
+		"heir":
+			if d.sname == NPCManager.ROYAL_SEAT:
+				return "I am %s of Aldmere. One day I'll %s - but for now my tutors won't let me out of their sight." % [d.name, "wear the crown" if d.gender == "m" else "sit on the council"]
+			return "I'm %s. Father wants me at my lessons; I'd rather be in the training yard." % d.name
+		"jailer": return "%s, keeper of the cells. Thieves, poachers, one fellow who insulted the King's horse. They stay till the King says otherwise." % d.name
+		"prisoner": return "%s. They say I stole from the King's stores. I took bread for my children - is that a crime?" % d.name
 		"official": return "%s, steward to the %s. I keep the ledgers and, unlike some, my boots clean." % [d.name, "king" if d.sname == NPCManager.ROYAL_SEAT else "duke"]
 		"knight": return "%s, knight of %s. My oath is to protect these people - and I keep it." % [d.name, d.sname]
 		"falconer": return "I'm %s, the castle falconer. This beauty is Swift - the finest hunter in Aldmere." % d.name

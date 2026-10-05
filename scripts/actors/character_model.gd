@@ -92,7 +92,7 @@ func build(p: Dictionary) -> void:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	# attachments
 	if p.get("crown", false):
-		_attach_model("Head", "res://assets/items/crown.glb", 0.2, "xz", Vector3(0, 1.79, -0.01), Vector3.ZERO, true)
+		_attach_model("Head", "res://assets/items/crown.glb", float(p.get("crown_size", 0.2)), "xz", Vector3(0, 1.79, -0.01), Vector3.ZERO, true)
 	anim = AnimationPlayer.new()
 	root_scene.add_child(anim)
 	anim.add_animation_library("", library())

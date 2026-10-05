@@ -10,7 +10,7 @@ var MAX_ACTIVE := (9 if Game.mobile else 14) if Assets.compat else 70
 var _spawn_cd := 0.0
 
 const PERSONALITIES := ["friendly", "crabby", "suspicious", "cautious", "helpful", "hostile", "cheerful", "grumpy", "shy", "boastful", "pious", "greedy"]
-const RANKS := {"duke": 1, "queen": 1, "official": 2, "knight": 3, "falconer": 4, "guard": 5, "cook": 6, "servant": 7}
+const RANKS := {"duke": 1, "consort": 1, "heir": 2, "official": 2, "knight": 3, "falconer": 4, "guard": 5, "jailer": 5, "cook": 6, "servant": 7, "prisoner": 9}
 const ROYAL_SEAT := "Castle Ravenmoor"     # the King of Aldmere holds court here; the other castles have dukes
 const NAMES := {
 	"temperate": {"m": ["Aldric", "Edmund", "Gareth", "Rowan", "Tobias", "Matthias", "Cedric", "Hugh", "Osric", "Alaric", "Bertram", "Conrad", "Dunstan", "Edgar", "Godfrey", "Harold", "Leofric", "Merrick", "Oswin", "Percival", "Roland", "Wilfred", "Geoffrey", "Baldwin", "Walter", "Simon"],
@@ -108,8 +108,13 @@ func _new(info: Dictionary, role: String, gender := "") -> NPCData:
 	d.gender = gender if gender != "" else ("m" if _rng.randf() < (0.85 if role in ["knight", "guard", "blacksmith"] else 0.55) else "f")
 	if role in ["knight", "guard", "duke"]:
 		d.gender = "m" if role != "knight" or _rng.randf() < 0.85 else "f"
-	if role == "queen":
+	if role == "consort":
 		d.gender = "f"
+	if role == "heir":
+		# a son and a daughter
+		var n: int = info.get("heirs", 0)
+		info["heirs"] = n + 1
+		d.gender = "m" if n % 2 == 0 else "f"
 	d.personality = PERSONALITIES[_rng.randi() % PERSONALITIES.size()]
 	match role:
 		"official": d.personality = "snobbish"
@@ -118,7 +123,10 @@ func _new(info: Dictionary, role: String, gender := "") -> NPCData:
 		"guard": d.personality = "stern"
 		"servant": d.personality = "meek"
 		"duke": d.personality = ["stern", "friendly", "boastful"][_rng.randi() % 3]
-		"queen": d.personality = ["gracious", "stern"][_rng.randi() % 2]
+		"consort": d.personality = ["gracious", "stern"][_rng.randi() % 2]
+		"heir": d.personality = ["cheerful", "boastful", "shy", "friendly"][_rng.randi() % 4]
+		"jailer": d.personality = "grumpy"
+		"prisoner": d.personality = "prisoner"
 	d.name = _make_name(d)
 	d.look = _make_look(d)
 	d.health = 160.0 if role == "knight" else (120.0 if role in ["guard", "bandit"] else 70.0)
@@ -134,7 +142,11 @@ func _make_name(d: NPCData) -> String:
 	match d.role:
 		"knight": return ("Sir " if d.gender == "m" else "Dame ") + first
 		"duke": return ("King %s" % first) if d.sname == ROYAL_SEAT else "Duke %s of %s" % [first, String(d.sname).replace("Castle ", "")]
-		"queen": return "Queen %s" % first
+		"consort": return ("Queen %s" % first) if d.sname == ROYAL_SEAT else "Duchess %s of %s" % [first, String(d.sname).replace("Castle ", "")]
+		"heir":
+			if d.sname == ROYAL_SEAT:
+				return ("Prince " if d.gender == "m" else "Princess ") + first
+			return ("Lord " if d.gender == "m" else "Lady ") + first + " of " + String(d.sname).replace("Castle ", "")
 		"official": return ("Lord " if d.gender == "m" else "Lady ") + first + " " + SURNAMES[_rng.randi() % SURNAMES.size()]
 	if d.climate == "desert":
 		return first + " " + DESERT_SUR[_rng.randi() % DESERT_SUR.size()]
@@ -184,8 +196,18 @@ func _make_look(d: NPCData) -> Dictionary:
 			L.outfit = "Ranger"; L.crown = true; L.hue = [0.72, 0.95, 0.12][_rng.randi() % 3]; L.sat = 1.7; L.val = 0.85; L.hood = false; L.pauldron = true; L.beard = true
 			if d.sname == ROYAL_SEAT:
 				L.hue = 0.76; L.sat = 1.6; L.val = 0.95; L.steel = 0.2          # the king: royal crimson
-		"queen":
+		"consort":
 			L.outfit = "Ranger"; L.crown = true; L.hue = 0.74; L.sat = 1.6; L.val = 0.95; L.hood = false; L.pauldron = false
+			if d.sname != ROYAL_SEAT:
+				L.crown_size = 0.16; L.hue = 0.6
+		"heir":
+			# the young royals: the family's colours, a slender circlet
+			L.outfit = "Ranger"; L.crown = true; L.crown_size = 0.15; L.hue = 0.76 if d.sname == ROYAL_SEAT else 0.62; L.sat = 1.5; L.val = 1.0
+			L.hood = false; L.pauldron = d.gender == "m"; L.beard = false; L.sword = d.gender == "m"
+		"jailer":
+			L.outfit = "Ranger"; L.hood = true; L.val = 0.45; L.sat = 0.5; L.steel = 0.3; L.sword = true; L.pauldron = true
+		"prisoner":
+			L.outfit = "Peasant"; L.hood = false; L.val = 0.45; L.sat = 0.3; L.dust = 0.6
 		"official":
 			L.outfit = "Ranger"; L.hue = [0.62, 0.92, 0.33, 0.75][_rng.randi() % 4]; L.sat = 1.5; L.val = 0.8; L.hood = false; L.pauldron = false
 		"falconer":
@@ -224,7 +246,7 @@ func _buildings(info: Dictionary, types: Array) -> Array:
 func _spot(info: Dictionary, building_types: Array, tag: String, used: Dictionary) -> Dictionary:
 	for b in _buildings(info, building_types):
 		for s in b.spots.work:
-			if (tag == "" or s.tag == tag) and not used.has(s):
+			if s.tag == tag and not used.has(s):
 				used[s] = true
 				return s
 	return {}
@@ -257,8 +279,12 @@ func _populate(info: Dictionary) -> void:
 		"castle":
 			plan = ["duke", "official", "official", "official", "knight", "knight", "knight", "knight", "knight", "falconer", "guard", "guard", "guard", "guard", "guard", "guard",
 				"cook", "cook", "servant", "servant", "servant", "servant", "stablemaster"]
+			# the ruling family, and the dungeon's keeper and its prisoners
+			plan.insert(1, "consort")
+			plan.insert(2, "heir")
+			plan.insert(3, "heir")
+			plan.append_array(["jailer", "prisoner", "prisoner", "prisoner", "prisoner"])
 			if info.name == ROYAL_SEAT:
-				plan.insert(1, "queen")
 				plan.append_array(["knight", "knight", "guard", "guard"])      # the royal household
 	for role in plan:
 		var d := _new(info, role)
@@ -276,17 +302,32 @@ func _assign(d: NPCData, info: Dictionary, used: Dictionary, beds: Dictionary) -
 		"knight":
 			d.bed = _bed(info, ["barracks"], beds)
 			if d.bed.is_empty(): d.bed = _bed(info, ["tavern"], beds, true)
-			d.work = _spot(info, ["keep"], "throne_guard", used) if info.type == "castle" else {}
+			if info.type == "castle":
+				d.work = _spot(info, ["keep"], "throne_guard", used)
+				if d.work.is_empty():
+					d.work = _spot(info, ["keep"], "door_guard", used)
 		"guard":
 			d.bed = _bed(info, ["barracks"], beds)
-		"duke", "queen":
+		"duke", "consort", "heir":
 			d.bed = _bed(info, ["keep"], beds)
+			var want: String = {"duke": "throne", "consort": "consort"}.get(d.role, "heir_m" if d.gender == "m" else "heir_f")
 			for b in _buildings(info, ["keep"]):
 				for s in b.spots.sit:
-					if s.tag == ("throne" if d.role == "duke" else "consort"):
+					if s.tag == want:
 						d.seat = s
+		"jailer":
+			d.bed = _bed(info, ["barracks"], beds)
+			for b in _buildings(info, ["keep"]):
+				for s in b.spots.sit:
+					if s.tag == "jailer":
+						d.work = s
+		"prisoner":
+			d.work = _spot(info, ["keep"], "prisoner", used)
+			d.bed = d.work.get("straw", {})
 		"official":
 			d.work = _spot(info, ["keep", "townhall"], "official", used)
+			if d.work.is_empty():
+				d.work = _spot(info, ["keep"], "scholar", used)
 			d.bed = _bed(info, ["keep", "townhall"], beds)
 		"falconer":
 			d.work = _spot(info, ["mews"], "falconer", used)
@@ -334,7 +375,7 @@ func _assign(d: NPCData, info: Dictionary, used: Dictionary, beds: Dictionary) -
 			d.work = _spot(info, ["house"], "hearth", used)
 	for b in _buildings(info, ["tavern", "keep", "chapel", "townhall"]):
 		for s in b.spots.sit:
-			if not used.has(s) and s.tag not in ["throne", "consort"] and d.role not in ["guard", "cook", "servant", "duke", "queen"]:
+			if not used.has(s) and s.tag == "" and d.role not in ["guard", "cook", "servant", "duke", "consort", "heir", "jailer", "prisoner"]:
 				used[s] = true
 				d.seat = s
 				break
@@ -450,9 +491,16 @@ func _make_horse(spec: Dictionary, owned: bool) -> Node3D:
 static func role_title(d) -> String:
 	var t := {"tavern_owner": "Innkeeper", "stablemaster": "Stablemaster", "shopkeeper": "Shopkeeper", "blacksmith": "Blacksmith", "merchant": "Merchant",
 		"farmer": "Farmer", "priest": "Priest", "official": "Official", "falconer": "Falconer", "knight": "Knight", "guard": "Guard", "servant": "Servant",
-		"cook": "Cook", "porter": "Porter", "explorer": "Explorer", "duke": "Duke", "queen": "Queen", "bandit": "Bandit", "villager": "Villager"}
+		"cook": "Cook", "porter": "Porter", "explorer": "Explorer", "duke": "Duke", "bandit": "Bandit", "villager": "Villager",
+		"jailer": "Jailer", "prisoner": "Prisoner"}
 	if d.role == "duke" and d.sname == ROYAL_SEAT:
 		return "King"
+	if d.role == "consort":
+		return "Queen" if d.sname == ROYAL_SEAT else "Duchess"
+	if d.role == "heir":
+		if d.sname == ROYAL_SEAT:
+			return "Prince" if d.gender == "m" else "Princess"
+		return "Lord" if d.gender == "m" else "Lady"
 	return t.get(d.role, String(d.role).capitalize())
 
 
@@ -497,7 +545,22 @@ func activity_for(d: NPCData) -> Dictionary:
 			if not d.work.is_empty() and h > 8.0 and h < 17.0 and d.id % 2 == 0:
 				return _act_spot(d.work)
 			return _act_hub(d, slot / 2, "Sword_Idle", 1.3)
-		"duke", "queen":
+		"prisoner":
+			if night and not d.bed.is_empty():
+				return _act_spot(d.bed, "Sleep")      # on the straw
+			return _act_spot(d.work) if not d.work.is_empty() else {"type": "absent", "key": "absent"}
+		"jailer":
+			if night and not d.bed.is_empty() and d.id % 2 == 0:
+				return _act_spot(d.bed, "Sleep")
+			if not d.work.is_empty():
+				return _act_spot(d.work, "Sitting_Idle")
+		"heir":
+			if night and not d.bed.is_empty():
+				return _act_spot(d.bed, "Sleep")
+			if not d.seat.is_empty() and ((h > 9.0 and h < 11.5) or (h > 15.0 and h < 16.5)):
+				return _act_spot(d.seat, "Sitting_Talking")
+			return _act_hub(d, slot / 2 + d.id, "Idle_Talking" if d.id % 2 else "Idle", 1.2)
+		"duke", "consort":
 			if night and not d.bed.is_empty():
 				return _act_spot(d.bed, "Sleep")
 			if not d.seat.is_empty() and ((h > 8.0 and h < 12.0) or (h > 14.0 and h < 19.0)):
